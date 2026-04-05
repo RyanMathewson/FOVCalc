@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Camera FOV Calculator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+    <header>
+        <h1>Security Camera FOV Calculator</h1>
+        <span class="spacer"></span>
+        <button id="btn-compare">Compare Cameras</button>
+        <button id="btn-help">Help</button>
+    </header>
+
+    <div class="main">
+        <aside class="sidebar">
+            <!-- Phone / Photo -->
+            <div class="panel" id="panel-photo">
+                <h3>1. Photo &amp; Phone</h3>
+                <button class="btn" id="btn-upload">Upload Photo</button>
+                <input type="file" id="file-input" accept="image/*" style="display:none">
+                <div class="form-row" style="margin-top:8px">
+                    <label>Phone Model</label>
+                    <select id="sel-phone"></select>
+                </div>
+                <div class="form-row">
+                    <label>Zoom / Lens</label>
+                    <select id="sel-lens"></select>
+                </div>
+                <div class="form-row" id="custom-fov-row" style="display:none">
+                    <label>Custom HFOV (degrees)</label>
+                    <input type="number" id="input-custom-fov" value="75" min="10" max="180" step="0.1">
+                </div>
+                <p class="info-text" id="phone-fov-display">HFOV: —</p>
+                <div class="form-row" style="margin-top:8px">
+                    <label>Straighten Photo <span id="rotation-value">0°</span></label>
+                    <div style="display:flex;gap:6px;align-items:center">
+                        <input type="range" id="input-rotation" min="-30" max="30" step="0.5" value="0" style="flex:1">
+                        <button class="btn btn-secondary btn-sm" id="btn-pick-horizon" title="Click two points on the horizon to auto-straighten" style="white-space:nowrap">Pick Horizon</button>
+                    </div>
+                </div>
+                <button class="btn btn-secondary btn-sm" id="btn-reset-rotation" style="margin-top:2px">Reset Rotation</button>
+            </div>
+
+            <!-- Calibration -->
+            <div class="panel" id="panel-calibration">
+                <h3>2. Calibrate Distance</h3>
+                <div class="form-row" style="margin-bottom:8px">
+                    <label>Camera Height</label>
+                    <div class="form-row-inline">
+                        <div class="form-row" style="flex:2"><input type="number" id="input-cam-height" min="0.1" step="0.5" value="9" placeholder="Height"></div>
+                        <div class="form-row" style="flex:1">
+                            <select id="sel-height-unit">
+                                <option value="ft">feet</option>
+                                <option value="m">meters</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <p class="info-text" style="margin-bottom:8px">Click ground features at known distances. Need at least 2.</p>
+                <div style="display:flex;gap:6px;margin-bottom:4px">
+                    <button class="btn btn-secondary btn-sm" id="btn-add-marker" style="flex:1">+ Ground Distance</button>
+                    <button class="btn btn-secondary btn-sm" id="btn-add-between" style="flex:1">+ Between Points</button>
+                </div>
+                <p class="info-text" style="font-size:11px;color:var(--text-dim)"><strong>Ground Distance:</strong> click a point, enter distance along the ground from camera base.<br><strong>Between Points:</strong> click two points, enter the ground distance between them.</p>
+                <div id="marker-list" style="margin-top:8px"></div>
+                <button class="btn btn-secondary btn-sm" id="btn-clear-markers" style="margin-top:4px;display:none">Clear All Markers</button>
+                <p class="info-text" id="calibration-status" style="margin-top:6px">Not calibrated</p>
+            </div>
+
+            <!-- Cameras -->
+            <div class="panel" id="panel-cameras">
+                <h3>3. Cameras</h3>
+                <div id="camera-list"></div>
+                <div style="display:flex;gap:6px;margin-top:8px">
+                    <button class="btn btn-sm" id="btn-add-preset">+ Add Preset</button>
+                    <button class="btn btn-sm btn-secondary" id="btn-add-custom">+ Custom</button>
+                </div>
+            </div>
+
+            <!-- Preset picker (hidden by default) -->
+            <div class="panel" id="panel-preset-picker" style="display:none">
+                <h3>Select Preset Camera</h3>
+                <div id="preset-list"></div>
+                <button class="btn btn-secondary btn-sm" id="btn-cancel-preset" style="margin-top:8px">Cancel</button>
+            </div>
+
+            <!-- Custom camera form (hidden by default) -->
+            <div class="panel" id="panel-custom-cam" style="display:none">
+                <h3>Custom Camera</h3>
+                <div class="custom-cam-fields">
+                    <div class="form-row"><label>Name</label><input type="text" id="cc-name" value="Custom Camera"></div>
+                    <div class="form-row-inline">
+                        <div class="form-row"><label>H. Resolution</label><input type="number" id="cc-hres" value="2560" min="1"></div>
+                        <div class="form-row"><label>V. Resolution</label><input type="number" id="cc-vres" value="1440" min="1"></div>
+                    </div>
+                    <div class="form-row-inline">
+                        <div class="form-row"><label>HFOV (°)</label><input type="number" id="cc-hfov" value="90" min="1" max="180" step="0.1"></div>
+                        <div class="form-row"><label>VFOV (°)</label><input type="number" id="cc-vfov" value="50" min="1" max="180" step="0.1"></div>
+                    </div>
+                    <div class="form-row-inline">
+                        <div class="form-row"><label>Focal (mm)</label><input type="number" id="cc-focal" step="0.1"></div>
+                        <div class="form-row"><label>Aperture</label><input type="text" id="cc-aperture" placeholder="F/2.0"></div>
+                    </div>
+                    <div class="form-row"><label>Sensor Size</label><input type="text" id="cc-sensor" placeholder='1/2.7"'></div>
+                </div>
+                <div style="display:flex;gap:6px;margin-top:10px">
+                    <button class="btn btn-sm" id="btn-save-custom">Add Camera</button>
+                    <button class="btn btn-sm btn-secondary" id="btn-cancel-custom">Cancel</button>
+                </div>
+            </div>
+
+            <!-- Display options -->
+            <div class="panel">
+                <h3>Display</h3>
+                <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:4px"><input type="checkbox" id="opt-ppf" checked> PPF Zones</label>
+                <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:4px"><input type="checkbox" id="opt-fov" checked> FOV Bounds</label>
+                <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:4px"><input type="checkbox" id="opt-ruler" checked> Distance Ruler</label>
+                <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:4px"><input type="checkbox" id="opt-minimap" checked> Mini-Map</label>
+            </div>
+
+            <!-- PPF Legend -->
+            <div class="panel">
+                <h3>PPF Legend</h3>
+                <div class="legend">
+                    <div class="legend-item"><div class="legend-swatch" style="background:rgba(34,197,94,0.5)"></div> ≥40 PPF — Identification</div>
+                    <div class="legend-item"><div class="legend-swatch" style="background:rgba(234,179,8,0.5)"></div> 20–40 PPF — Recognition</div>
+                    <div class="legend-item"><div class="legend-swatch" style="background:rgba(249,115,22,0.5)"></div> 10–20 PPF — Detection</div>
+                    <div class="legend-item"><div class="legend-swatch" style="background:rgba(100,100,100,0.5)"></div> <10 PPF — Below useful</div>
+                </div>
+            </div>
+
+            <!-- Mini-map -->
+            <div class="panel minimap-container" id="panel-minimap">
+                <h3>Top-Down View</h3>
+                <canvas id="minimap-canvas" width="280" height="200"></canvas>
+            </div>
+        </aside>
+
+        <div class="canvas-area">
+            <div class="upload-zone" id="upload-zone">
+                <div class="icon">📷</div>
+                <p>Drop a photo here or click to upload</p>
+                <p class="info-text">Take a photo from where you plan to mount the camera</p>
+            </div>
+            <div class="canvas-container" id="canvas-container" style="display:none">
+                <canvas id="bg-canvas"></canvas>
+                <canvas id="overlay-canvas"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Comparison Modal -->
+<div class="modal-backdrop hidden" id="modal-compare">
+    <div class="modal">
+        <button class="close-btn" id="btn-close-compare">&times;</button>
+        <h2>Camera Comparison</h2>
+        <div id="compare-table-container"></div>
+    </div>
+</div>
+
+<!-- Help Modal -->
+<div class="modal-backdrop hidden" id="modal-help">
+    <div class="modal">
+        <button class="close-btn" id="btn-close-help">&times;</button>
+        <h2>How to Use</h2>
+        <ol style="font-size:13px;line-height:1.8;padding-left:20px">
+            <li><strong>Take a photo</strong> from the spot where you plan to mount a security camera. Use your phone's ultrawide (0.5x) lens for the widest view.</li>
+            <li><strong>Upload the photo</strong> and select your phone model and lens/zoom used.</li>
+            <li><strong>Calibrate distances</strong> by placing at least 2 horizontal markers on features at known distances (e.g., sidewalk edge at 15ft, far curb at 40ft). Closer and farther markers give better results.</li>
+            <li><strong>Add cameras</strong> from the presets or enter custom specs. Each camera gets a colored overlay.</li>
+            <li><strong>Read the visualization:</strong>
+                <ul style="margin-top:4px">
+                    <li><strong>Green zone</strong> (≥40 PPF): Can identify individuals — faces recognizable</li>
+                    <li><strong>Yellow zone</strong> (20–40 PPF): Can recognize known people — general features visible</li>
+                    <li><strong>Orange zone</strong> (10–20 PPF): Can detect presence — motion and shapes visible</li>
+                    <li>The <strong>mini-map</strong> shows a top-down view of each camera's full FOV</li>
+                </ul>
+            </li>
+            <li>Use <strong>Compare Cameras</strong> to see a side-by-side stats table.</li>
+        </ol>
+        <p style="font-size:12px;color:var(--text-dim);margin-top:12px">Note: Distance calibration assumes roughly flat ground and a level camera. PPF values for ultra-wide (180°) cameras are averaged across the frame — center regions will have higher PPF than edges.</p>
+    </div>
+</div>
+
+<!-- Single-point ground distance prompt -->
+<div class="modal-backdrop hidden" id="modal-marker-single">
+    <div class="modal" style="max-width:380px">
+        <h2>Ground Distance from Camera Base</h2>
+        <p style="font-size:13px;margin-bottom:12px">Measure along the ground from directly below the camera to this point.</p>
+        <div class="form-row-inline">
+            <div class="form-row" style="flex:2"><input type="number" id="marker-dist-single" min="1" step="1" placeholder="Ground distance"></div>
+            <div class="form-row" style="flex:1">
+                <select id="marker-unit-single">
+                    <option value="ft">feet</option>
+                    <option value="m">meters</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-row" style="margin-top:8px">
+            <label>Elevation change <span style="color:var(--text-dim)">(optional)</span></label>
+            <div class="form-row-inline">
+                <div class="form-row" style="flex:2"><input type="number" id="marker-elev-single" step="0.5" value="0" placeholder="0"></div>
+                <div class="form-row" style="flex:1">
+                    <select id="marker-elev-dir">
+                        <option value="down">lower</option>
+                        <option value="up">higher</option>
+                    </select>
+                </div>
+            </div>
+            <p class="info-text" style="font-size:11px;margin-top:2px">If the ground slopes: how much higher or lower is this point vs. the camera base?</p>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:10px">
+            <button class="btn btn-sm" id="btn-confirm-single">Set</button>
+            <button class="btn btn-sm btn-secondary" id="btn-cancel-single">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Two-point ground distance prompt -->
+<div class="modal-backdrop hidden" id="modal-marker-between">
+    <div class="modal" style="max-width:380px">
+        <h2>Ground Distance Between Points</h2>
+        <p style="font-size:13px;margin-bottom:12px">Measure along the ground between the two points you marked.</p>
+        <div class="form-row-inline">
+            <div class="form-row" style="flex:2"><input type="number" id="marker-dist-between" min="1" step="1" placeholder="Ground distance"></div>
+            <div class="form-row" style="flex:1">
+                <select id="marker-unit-between">
+                    <option value="ft">feet</option>
+                    <option value="m">meters</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-row" style="margin-top:8px">
+            <label>Elevation change between points <span style="color:var(--text-dim)">(optional)</span></label>
+            <div class="form-row-inline">
+                <div class="form-row" style="flex:2"><input type="number" id="marker-elev-between" step="0.5" value="0" placeholder="0"></div>
+                <div class="form-row" style="flex:1">
+                    <select id="marker-elev-dir-between">
+                        <option value="down">far pt lower</option>
+                        <option value="up">far pt higher</option>
+                    </select>
+                </div>
+            </div>
+            <p class="info-text" style="font-size:11px;margin-top:2px">If the ground slopes between the two points.</p>
+        </div>
+        <p class="info-text" style="margin-top:8px">Tip: You also need at least one "Ground Distance" marker for full calibration.</p>
+        <div style="display:flex;gap:6px;margin-top:10px">
+            <button class="btn btn-sm" id="btn-confirm-between">Set</button>
+            <button class="btn btn-sm btn-secondary" id="btn-cancel-between">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
