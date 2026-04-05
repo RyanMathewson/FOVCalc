@@ -71,4 +71,4 @@ Pure HTML, CSS, and JavaScript — no frameworks, no dependencies, no build tool
 
 ## License
 
-MIT
+GPL-3.0
