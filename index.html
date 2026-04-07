@@ -11,6 +11,7 @@
     <header>
         <h1>Security Camera FOV Calculator</h1>
         <span class="spacer"></span>
+        <button id="btn-preview-toggle">Camera Preview</button>
         <button id="btn-compare">Compare Cameras</button>
         <button id="btn-help">Help</button>
     </header>
@@ -138,6 +139,7 @@
                 <h3>Top-Down View</h3>
                 <canvas id="minimap-canvas" width="280" height="200"></canvas>
             </div>
+
         </aside>
 
         <div class="canvas-area">
@@ -146,9 +148,22 @@
                 <p>Drop a photo here or click to upload</p>
                 <p class="info-text">Take a photo from where you plan to mount the camera</p>
             </div>
-            <div class="canvas-container" id="canvas-container" style="display:none">
-                <canvas id="bg-canvas"></canvas>
-                <canvas id="overlay-canvas"></canvas>
+            <div id="main-content">
+                <div class="canvas-container" id="canvas-container" style="display:none">
+                    <canvas id="bg-canvas"></canvas>
+                    <canvas id="overlay-canvas"></canvas>
+                </div>
+                <div id="panel-preview" class="preview-panel" style="display:none">
+                    <div class="preview-header">
+                        <h3>Camera Preview</h3>
+                        <select id="sel-preview-cam"></select>
+                        <span id="preview-info" class="info-text"></span>
+                        <button class="btn btn-secondary btn-sm" id="btn-close-preview">Hide</button>
+                    </div>
+                    <div class="preview-container">
+                        <canvas id="preview-canvas"></canvas>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

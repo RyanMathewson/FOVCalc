@@ -604,6 +604,193 @@ export function renderMiniMap(canvas, state) {
     }
 }
 
+/**
+ * Render a camera preview — shows what the camera would actually output.
+ * Maps the phone photo into the camera's resolution, FOV, and projection.
+ *
+ * For single-lens cameras: rectilinear crop/scale from the phone image.
+ * For dual-lens panoramic cameras: simulates cylindrical equirectangular
+ * output by remapping from the phone's rectilinear projection.
+ */
+export function renderCameraPreview(canvas, state, camera) {
+    if (!state.photo || !camera) {
+        const ctx = canvas.getContext('2d');
+        canvas.width = 400;
+        canvas.height = 80;
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(0, 0, 400, 80);
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.font = '12px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Upload a photo and add a camera', 200, 44);
+        return null;
+    }
+
+    const img = state.photo;
+    const phoneHFov = state.phoneHFov;
+    const panOffset = camera.panOffset || 0;
+    const tiltOffset = camera.tiltOffset || 0;
+
+    // Output dimensions — use the container's available width
+    const containerW = canvas.parentElement ? canvas.parentElement.clientWidth : 800;
+    const camAspect = camera.hRes / camera.vRes;
+    const outW = Math.min(containerW, camera.hRes); // don't exceed native res
+    const outH = Math.round(outW / camAspect);
+
+    canvas.width = outW;
+    canvas.height = outH;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, outW, outH);
+
+    // Phone's angular coverage
+    const phoneHHalfRad = Math.min(phoneHFov, 179) * Math.PI / 360;
+    const phoneHHalfTan = Math.tan(phoneHHalfRad);
+    const phoneVHalfRad = Math.atan(phoneHHalfTan * img.naturalHeight / img.naturalWidth);
+
+    // Camera angular coverage
+    const camHHalfDeg = camera.hFov / 2;
+    const camVHalfDeg = camera.vFov / 2;
+
+    const isDualLens = camera.numLenses && camera.numLenses > 1;
+
+    // For each output pixel, compute the viewing angle, then map back to the phone image
+    const imgData = getPhoneImageData(img);
+    const outData = ctx.createImageData(outW, outH);
+    const srcW = imgData.width;
+    const srcH = imgData.height;
+    const src = imgData.data;
+    const dst = outData.data;
+
+    for (let oy = 0; oy < outH; oy++) {
+        // Vertical angle: map output row to angle from camera center
+        // oy=0 → top of camera view, oy=outH-1 → bottom
+        const vFrac = (oy + 0.5) / outH;  // 0..1
+        const vAngleDeg = camVHalfDeg - vFrac * camera.vFov + tiltOffset;
+        const vAngleRad = vAngleDeg * Math.PI / 180;
+
+        // Map to phone image Y
+        // Phone vertical: center = img.naturalHeight/2, angle maps via tan
+        const phoneVFrac = 0.5 - Math.tan(vAngleRad) / (2 * Math.tan(phoneVHalfRad));
+        const srcY = phoneVFrac * srcH;
+
+        if (srcY < 0 || srcY >= srcH - 1) {
+            // Outside phone image — leave black
+            continue;
+        }
+
+        for (let ox = 0; ox < outW; ox++) {
+            // Horizontal angle: depends on projection type
+            let hAngleDeg;
+
+            if (isDualLens) {
+                // Cylindrical equirectangular: linear mapping from pixel to angle
+                const hFrac = (ox + 0.5) / outW;  // 0..1
+                hAngleDeg = -camHHalfDeg + hFrac * camera.hFov + panOffset;
+            } else {
+                // Rectilinear: pixel position maps via tangent
+                const camHHalfRad = Math.min(camHHalfDeg, 89) * Math.PI / 180;
+                const camHHalfTan = Math.tan(camHHalfRad);
+                const hFrac = (ox + 0.5) / outW;  // 0..1
+                const hTan = -camHHalfTan + hFrac * 2 * camHHalfTan;
+                hAngleDeg = Math.atan(hTan) * 180 / Math.PI + panOffset;
+            }
+
+            // Map horizontal angle to phone image X
+            // Phone is rectilinear: angle → tan → pixel
+            const hAngleRad = hAngleDeg * Math.PI / 180;
+            if (Math.abs(hAngleDeg) >= 89) continue;
+
+            const phoneHFrac = 0.5 + Math.tan(hAngleRad) / (2 * phoneHHalfTan);
+            const srcX = phoneHFrac * srcW;
+
+            if (srcX < 0 || srcX >= srcW - 1) {
+                // Outside phone image — leave black
+                continue;
+            }
+
+            // Bilinear sample from source
+            const sx = Math.floor(srcX);
+            const sy = Math.floor(srcY);
+            const fx = srcX - sx;
+            const fy = srcY - sy;
+
+            const i00 = (sy * srcW + sx) * 4;
+            const i10 = i00 + 4;
+            const i01 = i00 + srcW * 4;
+            const i11 = i01 + 4;
+
+            const dstIdx = (oy * outW + ox) * 4;
+            for (let c = 0; c < 3; c++) {
+                dst[dstIdx + c] = Math.round(
+                    src[i00 + c] * (1 - fx) * (1 - fy) +
+                    src[i10 + c] * fx * (1 - fy) +
+                    src[i01 + c] * (1 - fx) * fy +
+                    src[i11 + c] * fx * fy
+                );
+            }
+            dst[dstIdx + 3] = 255;
+        }
+    }
+
+    ctx.putImageData(outData, 0, 0);
+
+    // Draw stitch line for dual-lens cameras
+    if (isDualLens) {
+        // Stitch at the center of the panorama (adjusted for pan)
+        const stitchFrac = 0.5 - panOffset / camera.hFov;
+        const stitchX = Math.round(stitchFrac * outW);
+        if (stitchX > 0 && stitchX < outW) {
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([2, 4]);
+            ctx.moveTo(stitchX, 0);
+            ctx.lineTo(stitchX, outH);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+    }
+
+    // Label: resolution and projection
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.textAlign = 'left';
+    const projLabel = isDualLens ? 'cylindrical' : 'rectilinear';
+    ctx.fillText(`${camera.hRes}×${camera.vRes}  ${projLabel}`, 4, outH - 4);
+
+    // Return info for the info panel
+    return {
+        outputRes: `${camera.hRes}×${camera.vRes}`,
+        aspect: `${camAspect.toFixed(2)}:1`,
+        projection: isDualLens ? 'Cylindrical (dual-lens stitched)' : 'Rectilinear',
+        lenses: isDualLens ? `${camera.numLenses} × ${camera.perLensHRes}×${camera.vRes}` : 'Single lens'
+    };
+}
+
+// Cache the phone image pixel data to avoid re-reading on every preview render
+let _cachedImgSrc = null;
+let _cachedImgData = null;
+
+function getPhoneImageData(img) {
+    if (_cachedImgSrc === img.src && _cachedImgData) return _cachedImgData;
+
+    // Downscale for performance while maintaining reasonable quality
+    const maxDim = 1600;
+    const scale = Math.min(maxDim / img.naturalWidth, maxDim / img.naturalHeight, 1);
+    const w = Math.round(img.naturalWidth * scale);
+    const h = Math.round(img.naturalHeight * scale);
+
+    const offscreen = document.createElement('canvas');
+    offscreen.width = w;
+    offscreen.height = h;
+    const ctx = offscreen.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+    _cachedImgData = ctx.getImageData(0, 0, w, h);
+    _cachedImgSrc = img.src;
+    return _cachedImgData;
+}
+
 function hexToRgba(hex, alpha) {
     const r = parseInt(hex.slice(1, 3), 16);
     const g = parseInt(hex.slice(3, 5), 16);

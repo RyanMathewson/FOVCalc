@@ -1,6 +1,6 @@
 import { CAMERA_PRESETS, PHONE_PRESETS } from './cameras.js';
 import { calibrate, ppfAtDistance, ppfRangeAtDistance, distanceAtPpf, fovBounds, PPF_ZONES } from './perspective.js';
-import { drawPhoto, renderOverlay, renderMiniMap } from './renderer.js';
+import { drawPhoto, renderOverlay, renderMiniMap, renderCameraPreview } from './renderer.js';
 
 // ── State ──
 const state = {
@@ -42,6 +42,9 @@ const btnClearMarkers = $('btn-clear-markers');
 const calibrationStatus = $('calibration-status');
 const cameraListEl = $('camera-list');
 const minimapCanvas = $('minimap-canvas');
+const previewCanvas = $('preview-canvas');
+const selPreviewCam = $('sel-preview-cam');
+const previewInfo = $('preview-info');
 const inputRotation = $('input-rotation');
 const rotationValue = $('rotation-value');
 
@@ -632,7 +635,32 @@ function updateCameraList() {
         });
         cameraListEl.appendChild(div);
     });
+
+    // Update preview camera selector
+    const prevVal = selPreviewCam.value;
+    selPreviewCam.innerHTML = '';
+    if (state.cameras.length === 0) {
+        const opt = document.createElement('option');
+        opt.textContent = 'No cameras added';
+        opt.disabled = true;
+        selPreviewCam.appendChild(opt);
+    } else {
+        state.cameras.forEach(cam => {
+            const opt = document.createElement('option');
+            opt.value = cam.id;
+            opt.textContent = cam.name;
+            opt.style.color = cam.color;
+            if (cam.id === prevVal) opt.selected = true;
+            selPreviewCam.appendChild(opt);
+        });
+        // If previous selection gone, select first
+        if (!state.cameras.find(c => c.id === prevVal) && state.cameras.length > 0) {
+            selPreviewCam.value = state.cameras[0].id;
+        }
+    }
 }
+
+selPreviewCam.addEventListener('change', render);
 
 // ── Camera FOV dragging ──
 overlayCanvas.addEventListener('mousedown', e => {
@@ -866,6 +894,20 @@ function showComparisonModal() {
     $('modal-compare').classList.remove('hidden');
 }
 
+// ── Camera Preview toggle ──
+$('btn-preview-toggle').addEventListener('click', () => {
+    const panel = $('panel-preview');
+    if (panel.style.display === 'none') {
+        panel.style.display = '';
+        render();
+    } else {
+        panel.style.display = 'none';
+    }
+});
+$('btn-close-preview').addEventListener('click', () => {
+    $('panel-preview').style.display = 'none';
+});
+
 // ── Help modal ──
 $('btn-help').addEventListener('click', () => $('modal-help').classList.remove('hidden'));
 $('btn-close-help').addEventListener('click', () => $('modal-help').classList.add('hidden'));
@@ -876,4 +918,16 @@ function render() {
     if (!state.photo || !state.photoLayout) return;
     renderOverlay(overlayCanvas, state);
     renderMiniMap(minimapCanvas, state);
+
+    // Camera preview (only if visible)
+    if ($('panel-preview').style.display !== 'none') {
+        const previewCamId = selPreviewCam.value;
+        const previewCam = state.cameras.find(c => c.id === previewCamId);
+        const info = renderCameraPreview(previewCanvas, state, previewCam);
+        if (info) {
+            previewInfo.innerHTML = `${info.outputRes} &middot; ${info.aspect} &middot; ${info.projection} &middot; ${info.lenses}`;
+        } else {
+            previewInfo.innerHTML = '';
+        }
+    }
 }
