@@ -69,29 +69,72 @@ export function rowAtDistance(d, cal) {
 
 /**
  * Compute PPF at a given distance for a camera.
+ *
+ * For multi-lens cameras (e.g., dual-lens panoramic), PPF is calculated
+ * per individual lens since only one lens covers any given point in the scene.
+ * Returns the per-lens center PPF (most conservative/realistic estimate).
+ *
+ * For single-lens cameras, uses total resolution and FOV directly.
  */
 export function ppfAtDistance(camera, distanceFt) {
     if (distanceFt <= 0) return Infinity;
-    const hFovRad = camera.hFov * Math.PI / 180;
+    const lens = getLensParams(camera);
+    const hFovRad = lens.hFov * Math.PI / 180;
     let width;
-    if (camera.hFov >= 179) {
+    if (lens.hFov >= 179) {
         width = 2 * distanceFt;
     } else {
         width = 2 * distanceFt * Math.tan(hFovRad / 2);
     }
-    return camera.hRes / width;
+    return lens.hRes / width;
+}
+
+/**
+ * Compute PPF range at a given distance (min/max across the lens).
+ * For rectilinear lenses, PPF increases toward the edges by 1/cos(θ).
+ */
+export function ppfRangeAtDistance(camera, distanceFt) {
+    if (distanceFt <= 0) return { min: Infinity, max: Infinity, avg: Infinity };
+    const lens = getLensParams(camera);
+    const hFovRad = lens.hFov * Math.PI / 180;
+    let width;
+    if (lens.hFov >= 179) {
+        width = 2 * distanceFt;
+    } else {
+        width = 2 * distanceFt * Math.tan(hFovRad / 2);
+    }
+    const centerPpf = lens.hRes / width;
+    // Rectilinear lens: PPF at angle θ from center = centerPpf / cos(θ)
+    // At the edge (θ = hFov/2), PPF is highest
+    const edgeAngle = Math.min(lens.hFov / 2, 89) * Math.PI / 180;
+    const edgePpf = centerPpf / Math.cos(edgeAngle);
+    return { min: centerPpf, max: edgePpf, avg: (centerPpf + edgePpf) / 2 };
 }
 
 /**
  * Compute the distance at which a given PPF threshold is reached.
+ * Uses per-lens center PPF (conservative — the lens center is the weakest point).
  */
 export function distanceAtPpf(camera, targetPpf) {
     if (targetPpf <= 0) return Infinity;
-    if (camera.hFov >= 179) {
-        return camera.hRes / (2 * targetPpf);
+    const lens = getLensParams(camera);
+    if (lens.hFov >= 179) {
+        return lens.hRes / (2 * targetPpf);
     }
-    const hFovRad = camera.hFov * Math.PI / 180;
-    return camera.hRes / (2 * targetPpf * Math.tan(hFovRad / 2));
+    const hFovRad = lens.hFov * Math.PI / 180;
+    return lens.hRes / (2 * targetPpf * Math.tan(hFovRad / 2));
+}
+
+/**
+ * Get the effective single-lens parameters for PPF calculations.
+ * For multi-lens cameras, returns per-lens specs.
+ * For single-lens cameras, returns the camera's own specs.
+ */
+function getLensParams(camera) {
+    if (camera.numLenses && camera.numLenses > 1 && camera.perLensHRes && camera.perLensHFov) {
+        return { hRes: camera.perLensHRes, hFov: camera.perLensHFov };
+    }
+    return { hRes: camera.hRes, hFov: camera.hFov };
 }
 
 /**

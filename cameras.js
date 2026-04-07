@@ -10,7 +10,11 @@ export const CAMERA_PRESETS = [
         aperture: 'F/2.0',
         sensorSize: '1/2.7"',
         color: '#3b82f6',
-        notes: '8MP dual-lens, IR 30m'
+        notes: '8MP dual-lens, IR 30m',
+        // Dual-lens config: two lenses stitched into one panoramic output
+        numLenses: 2,
+        perLensHRes: 2304,  // 4608 / 2
+        perLensHFov: 90     // each lens covers ~90°
     },
     {
         id: 'duo-3-poe',
@@ -23,7 +27,10 @@ export const CAMERA_PRESETS = [
         aperture: 'F/1.6',
         sensorSize: '1/2.7"',
         color: '#22c55e',
-        notes: '16MP dual-lens, IR 30m'
+        notes: '16MP dual-lens, IR 30m',
+        numLenses: 2,
+        perLensHRes: 3840,
+        perLensHFov: 90
     },
     {
         id: 'duo-3v-poe-d',
@@ -36,7 +43,10 @@ export const CAMERA_PRESETS = [
         aperture: 'F/1.6',
         sensorSize: '1/2.8"',
         color: '#f97316',
-        notes: '16MP dual-lens, IR 30m'
+        notes: '16MP dual-lens, IR 30m',
+        numLenses: 2,
+        perLensHRes: 3840,
+        perLensHFov: 90
     }
 ];
 

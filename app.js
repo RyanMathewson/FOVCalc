@@ -1,5 +1,5 @@
 import { CAMERA_PRESETS, PHONE_PRESETS } from './cameras.js';
-import { calibrate, ppfAtDistance, distanceAtPpf, fovBounds, PPF_ZONES } from './perspective.js';
+import { calibrate, ppfAtDistance, ppfRangeAtDistance, distanceAtPpf, fovBounds, PPF_ZONES } from './perspective.js';
 import { drawPhoto, renderOverlay, renderMiniMap } from './renderer.js';
 
 // ── State ──
@@ -340,6 +340,16 @@ overlayCanvas.addEventListener('click', e => {
         state.mode = 'idle';
         overlayCanvas.style.cursor = 'default';
         $('btn-add-between').textContent = '+ Between Points';
+
+        // Check if points are at similar Y (horizontal measurement — won't help calibration)
+        const yDiff = Math.abs(state.pendingMarker.y2 - state.pendingMarker.y1);
+        const imgHeight = state.photo.naturalHeight;
+        const betweenWarning = $('between-horiz-warning');
+        if (yDiff < imgHeight * 0.03) {
+            betweenWarning.style.display = '';
+        } else {
+            betweenWarning.style.display = 'none';
+        }
 
         $('modal-marker-between').classList.remove('hidden');
         $('marker-dist-between').value = '';
@@ -782,6 +792,17 @@ function showComparisonModal() {
     state.cameras.forEach(c => html += `<td>${((c.hRes * c.vRes) / 1e6).toFixed(1)} MP</td>`);
     html += '</tr>';
 
+    // Lens config
+    html += '<tr><td>Lens Config</td>';
+    state.cameras.forEach(c => {
+        if (c.numLenses && c.numLenses > 1) {
+            html += `<td>${c.numLenses} lenses, ${c.perLensHRes}×${c.vRes} each, ${c.perLensHFov}° per lens</td>`;
+        } else {
+            html += '<td>Single lens</td>';
+        }
+    });
+    html += '</tr>';
+
     html += '<tr><td>HFOV / VFOV</td>';
     state.cameras.forEach(c => html += `<td>${c.hFov}° / ${c.vFov}°</td>`);
     html += '</tr>';
@@ -798,21 +819,26 @@ function showComparisonModal() {
     state.cameras.forEach(c => html += `<td>${c.sensorSize || '—'}</td>`);
     html += '</tr>';
 
-    html += '<tr><td colspan="100%" style="font-weight:600;padding-top:12px">Pixels Per Foot (PPF)</td></tr>';
+    html += '<tr><td colspan="100%" style="font-weight:600;padding-top:12px">Pixels Per Foot (PPF) — per lens</td></tr>';
     distances.forEach(d => {
         html += `<tr><td>@ ${d} ft</td>`;
         state.cameras.forEach(c => {
+            const range = ppfRangeAtDistance(c, d);
             const ppf = ppfAtDistance(c, d);
             let cls = 'ppf-none';
             if (ppf >= 40) cls = 'ppf-id';
             else if (ppf >= 20) cls = 'ppf-rec';
             else if (ppf >= 10) cls = 'ppf-det';
-            html += `<td class="${cls}">${ppf.toFixed(1)}</td>`;
+            if (c.numLenses && c.numLenses > 1) {
+                html += `<td class="${cls}">${range.min.toFixed(1)}–${range.max.toFixed(1)}</td>`;
+            } else {
+                html += `<td class="${cls}">${ppf.toFixed(1)}</td>`;
+            }
         });
         html += '</tr>';
     });
 
-    html += '<tr><td colspan="100%" style="font-weight:600;padding-top:12px">Effective Ranges</td></tr>';
+    html += '<tr><td colspan="100%" style="font-weight:600;padding-top:12px">Effective Ranges <span style="font-weight:400;font-size:11px;color:var(--text-dim)">(conservative — lens center PPF)</span></td></tr>';
     PPF_ZONES.forEach(zone => {
         html += `<tr><td>${zone.label} (${zone.ppf} PPF)</td>`;
         state.cameras.forEach(c => {

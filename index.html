@@ -65,7 +65,7 @@
                     <button class="btn btn-secondary btn-sm" id="btn-add-marker" style="flex:1">+ Ground Distance</button>
                     <button class="btn btn-secondary btn-sm" id="btn-add-between" style="flex:1">+ Between Points</button>
                 </div>
-                <p class="info-text" style="font-size:11px;color:var(--text-dim)"><strong>Ground Distance:</strong> click a point, enter distance along the ground from camera base.<br><strong>Between Points:</strong> click two points, enter the ground distance between them.</p>
+                <p class="info-text" style="font-size:11px;color:var(--text-dim)"><strong>Ground Distance:</strong> click a point, enter distance along ground from camera base.<br><strong>Between Points:</strong> click two points at <em>different distances</em> from camera (e.g., near &amp; far edge of sidewalk), enter the depth between them.</p>
                 <div id="marker-list" style="margin-top:8px"></div>
                 <button class="btn btn-secondary btn-sm" id="btn-clear-markers" style="margin-top:4px;display:none">Clear All Markers</button>
                 <p class="info-text" id="calibration-status" style="margin-top:6px">Not calibrated</p>
@@ -224,8 +224,8 @@
 <!-- Two-point ground distance prompt -->
 <div class="modal-backdrop hidden" id="modal-marker-between">
     <div class="modal" style="max-width:380px">
-        <h2>Ground Distance Between Points</h2>
-        <p style="font-size:13px;margin-bottom:12px">Measure along the ground between the two points you marked.</p>
+        <h2>Depth Between Points</h2>
+        <p style="font-size:13px;margin-bottom:12px">Enter the <strong>depth</strong> (distance toward/away from camera) between the two points. Both points should be at different distances from the camera — e.g., near and far edge of a sidewalk, not left and right edges.</p>
         <div class="form-row-inline">
             <div class="form-row" style="flex:2"><input type="number" id="marker-dist-between" min="1" step="1" placeholder="Ground distance"></div>
             <div class="form-row" style="flex:1">
@@ -248,6 +248,7 @@
             </div>
             <p class="info-text" style="font-size:11px;margin-top:2px">If the ground slopes between the two points.</p>
         </div>
+        <p id="between-horiz-warning" style="display:none;font-size:12px;color:#ef4444;margin-top:8px;padding:6px;background:rgba(239,68,68,0.1);border-radius:4px"><strong>Warning:</strong> These two points appear to be at the same distance from the camera (horizontal measurement). This feature is for points at <em>different</em> depths — e.g., near edge and far edge of a sidewalk. A horizontal measurement (like driveway width) won't help with distance calibration.</p>
         <p class="info-text" style="margin-top:8px">Tip: You also need at least one "Ground Distance" marker for full calibration.</p>
         <div style="display:flex;gap:6px;margin-top:10px">
             <button class="btn btn-sm" id="btn-confirm-between">Set</button>
