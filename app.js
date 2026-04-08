@@ -256,6 +256,14 @@ function fitCanvas() {
     state.photoLayout = drawPhoto(bgCanvas, state.photo, availW, availH, state.cameras, state.phoneHFov);
     overlayCanvas.width = state.photoLayout.width;
     overlayCanvas.height = state.photoLayout.height;
+
+    // Set initial zoom so the photo area fits the viewport (canvas is expanded for 360° + vertical)
+    if (state.viewport.zoom === 1 && state.viewport.panX === 0 && state.viewport.panY === 0) {
+        const layout = state.photoLayout;
+        const fitZoom = Math.min(availW / layout.width, availH / layout.height);
+        state.viewport.zoom = fitZoom;
+    }
+
     applyViewTransform();
     render();
 }
@@ -325,7 +333,7 @@ overlayCanvas.addEventListener('click', e => {
     if (e.ctrlKey) return; // Ctrl+click is for panning, not placing markers
     const { canvasX, canvasY } = screenToCanvas(e.clientX, e.clientY);
     const imgX = (canvasX - (state.photoLayout.photoOffsetX || 0)) / state.photoLayout.scale;
-    const imgY = canvasY / state.photoLayout.scale;
+    const imgY = (canvasY - (state.photoLayout.photoOffsetY || 0)) / state.photoLayout.scale;
 
     // Single-point (from camera)
     if (state.mode === 'placing-single') {
@@ -737,14 +745,17 @@ overlayCanvas.addEventListener('mousemove', e => {
         const photoW = state.photoLayout.photoW || state.photoLayout.width;
         const photoH = state.photoLayout.photoH || state.photoLayout.height;
 
+        // Account for viewport zoom: at higher zoom, same mouse delta = less angle
+        const zoom = state.viewport.zoom;
+
         // Horizontal: pan
-        const hDegreesPerPixel = state.phoneHFov / photoW;
+        const hDegreesPerPixel = state.phoneHFov / (photoW * zoom);
         const cam = state.draggingCamera;
         cam.panOffset = Math.max(-90, Math.min(90, state.dragStartPan + dx * hDegreesPerPixel));
 
         // Vertical: tilt (dragging up = positive tilt = camera points higher)
         const phoneVFov = 2 * Math.atan(Math.tan(state.phoneHFov * Math.PI / 360) * photoH / photoW) * 180 / Math.PI;
-        const vDegreesPerPixel = phoneVFov / photoH;
+        const vDegreesPerPixel = phoneVFov / (photoH * zoom);
         cam.tiltOffset = Math.max(-45, Math.min(45, state.dragStartTilt - dy * vDegreesPerPixel));
 
         render();
@@ -762,14 +773,10 @@ function endDrag() {
 
 overlayCanvas.addEventListener('mouseup', e => {
     endDrag();
-    endPan();
-});
-overlayCanvas.addEventListener('mouseleave', e => {
-    endDrag();
-    endPan();
 });
 
 // ── Viewport: zoom (wheel) and pan (middle-click or Ctrl+drag) ──
+// Attached to the full canvas area so panning/zooming works anywhere in the viewport
 const canvasArea = document.querySelector('.canvas-area');
 
 canvasArea.addEventListener('wheel', e => {
@@ -780,15 +787,13 @@ canvasArea.addEventListener('wheel', e => {
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
 
-    // Mouse position relative to element center
     const mx = e.clientX - cx;
     const my = e.clientY - cy;
 
     const oldZoom = state.viewport.zoom;
-    const delta = e.deltaY > 0 ? 0.9 : 1.1; // scroll down = zoom out
-    const newZoom = Math.max(0.25, Math.min(10, oldZoom * delta));
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const newZoom = Math.max(0.1, Math.min(10, oldZoom * delta));
 
-    // Adjust pan so the point under the mouse stays fixed
     state.viewport.panX = mx - (mx - state.viewport.panX) * (newZoom / oldZoom);
     state.viewport.panY = my - (my - state.viewport.panY) * (newZoom / oldZoom);
     state.viewport.zoom = newZoom;
@@ -796,21 +801,21 @@ canvasArea.addEventListener('wheel', e => {
     applyViewTransform();
 }, { passive: false });
 
-// Pan: middle-click drag or Ctrl+left-click drag
-overlayCanvas.addEventListener('mousedown', e => {
+// Pan: middle-click drag, Ctrl+left-click drag, or plain left-click drag on empty area
+canvasArea.addEventListener('mousedown', e => {
     if (!state.photo) return;
-    if (e.button === 1 || (e.button === 0 && e.ctrlKey)) {
+    if (e.button === 1 || (e.button === 0 && e.ctrlKey) || (e.button === 0 && e.target === canvasArea)) {
         e.preventDefault();
         state.isPanning = true;
         state.panStartScreenX = e.clientX;
         state.panStartScreenY = e.clientY;
         state.panStartOffsetX = state.viewport.panX;
         state.panStartOffsetY = state.viewport.panY;
-        overlayCanvas.style.cursor = 'grabbing';
+        canvasArea.style.cursor = 'grabbing';
     }
 });
 
-overlayCanvas.addEventListener('mousemove', e => {
+canvasArea.addEventListener('mousemove', e => {
     if (state.isPanning) {
         state.viewport.panX = state.panStartOffsetX + (e.clientX - state.panStartScreenX);
         state.viewport.panY = state.panStartOffsetY + (e.clientY - state.panStartScreenY);
@@ -818,16 +823,32 @@ overlayCanvas.addEventListener('mousemove', e => {
     }
 });
 
+canvasArea.addEventListener('mouseup', e => {
+    endDrag();
+    endPan();
+});
+canvasArea.addEventListener('mouseleave', e => {
+    endPan();
+});
+
 function endPan() {
     if (state.isPanning) {
         state.isPanning = false;
-        overlayCanvas.style.cursor = '';
+        canvasArea.style.cursor = '';
     }
 }
 
 // Reset viewport
 function resetViewport() {
-    state.viewport = { zoom: 1, panX: 0, panY: 0 };
+    if (state.photoLayout) {
+        const area = document.querySelector('.canvas-area');
+        const availW = area.clientWidth - 32;
+        const availH = area.clientHeight - 32;
+        const fitZoom = Math.min(availW / state.photoLayout.width, availH / state.photoLayout.height);
+        state.viewport = { zoom: fitZoom, panX: 0, panY: 0 };
+    } else {
+        state.viewport = { zoom: 1, panX: 0, panY: 0 };
+    }
     applyViewTransform();
 }
 
