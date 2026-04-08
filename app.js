@@ -22,7 +22,13 @@ const state = {
     nextCameraId: 1,
     draggingCamera: null, // camera being dragged
     dragStartX: 0,
-    dragStartPan: 0
+    dragStartPan: 0,
+    viewport: { zoom: 1, panX: 0, panY: 0 }, // viewport transform
+    isPanning: false,
+    panStartScreenX: 0,
+    panStartScreenY: 0,
+    panStartOffsetX: 0,
+    panStartOffsetY: 0
 };
 
 // ── DOM refs ──
@@ -124,18 +130,24 @@ $('sel-height-unit').addEventListener('change', () => {
 inputRotation.addEventListener('input', () => {
     state.photoRotation = parseFloat(inputRotation.value) || 0;
     rotationValue.textContent = `${state.photoRotation}°`;
-    applyRotation();
+    applyViewTransform();
 });
 
 $('btn-reset-rotation').addEventListener('click', () => {
     inputRotation.value = 0;
     state.photoRotation = 0;
     rotationValue.textContent = '0°';
-    applyRotation();
+    applyViewTransform();
 });
 
-function applyRotation() {
-    canvasContainer.style.transform = state.photoRotation ? `rotate(${state.photoRotation}deg)` : '';
+function applyViewTransform() {
+    const { zoom, panX, panY } = state.viewport;
+    const rot = state.photoRotation || 0;
+    const parts = [];
+    if (panX || panY) parts.push(`translate(${panX}px, ${panY}px)`);
+    if (zoom !== 1) parts.push(`scale(${zoom})`);
+    if (rot) parts.push(`rotate(${rot}deg)`);
+    canvasContainer.style.transform = parts.length ? parts.join(' ') : '';
 }
 
 // ── Photo upload ──
@@ -244,7 +256,7 @@ function fitCanvas() {
     state.photoLayout = drawPhoto(bgCanvas, state.photo, availW, availH, state.cameras, state.phoneHFov);
     overlayCanvas.width = state.photoLayout.width;
     overlayCanvas.height = state.photoLayout.height;
-    applyRotation();
+    applyViewTransform();
     render();
 }
 
@@ -274,26 +286,33 @@ $('btn-add-between').addEventListener('click', () => {
 
 /**
  * Convert screen (mouse) coordinates to canvas coordinates,
- * accounting for the CSS rotation applied to the canvas container.
+ * accounting for CSS translate, scale, and rotation on the container.
+ * CSS transform: translate(panX, panY) scale(zoom) rotate(rot)
+ * Reverse: rotate(-rot) * (1/zoom) * (screenOffset - pan)
  */
 function screenToCanvas(screenX, screenY) {
     const rect = canvasContainer.getBoundingClientRect();
-    // Center of the container in screen space
+    // Bounding rect center already includes the CSS translate offset
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
 
-    // Mouse position relative to center
+    // Screen offset from transformed center (translate already accounted for)
     const dx = screenX - cx;
     const dy = screenY - cy;
 
-    // Reverse the CSS rotation
+    // Reverse scale
+    const { zoom } = state.viewport;
+    const dx2 = dx / zoom;
+    const dy2 = dy / zoom;
+
+    // Reverse rotation
     const angle = -(state.photoRotation || 0) * Math.PI / 180;
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
-    const rx = dx * cos - dy * sin;
-    const ry = dx * sin + dy * cos;
+    const rx = dx2 * cos - dy2 * sin;
+    const ry = dx2 * sin + dy2 * cos;
 
-    // Convert back to canvas coordinates (relative to top-left of the unrotated canvas)
+    // Convert to canvas coordinates (relative to top-left)
     const canvasW = overlayCanvas.width;
     const canvasH = overlayCanvas.height;
     const canvasX = rx + canvasW / 2;
@@ -303,6 +322,7 @@ function screenToCanvas(screenX, screenY) {
 }
 
 overlayCanvas.addEventListener('click', e => {
+    if (e.ctrlKey) return; // Ctrl+click is for panning, not placing markers
     const { canvasX, canvasY } = screenToCanvas(e.clientX, e.clientY);
     const imgX = (canvasX - (state.photoLayout.photoOffsetX || 0)) / state.photoLayout.scale;
     const imgY = canvasY / state.photoLayout.scale;
@@ -379,7 +399,7 @@ overlayCanvas.addEventListener('click', e => {
             state.photoRotation = -angle;
             inputRotation.value = state.photoRotation;
             rotationValue.textContent = `${state.photoRotation.toFixed(1)}°`;
-            applyRotation();
+            applyViewTransform();
         }
         state.pendingHorizon = null;
         state.mode = 'idle';
@@ -670,6 +690,7 @@ selPreviewCam.addEventListener('change', render);
 
 // ── Camera FOV dragging ──
 overlayCanvas.addEventListener('mousedown', e => {
+    if (e.button !== 0 || e.ctrlKey) return; // left-click only, no Ctrl
     if (state.mode !== 'idle') return;
     if (state.cameras.length === 0 || !state.photoLayout) return;
 
@@ -739,8 +760,81 @@ function endDrag() {
     }
 }
 
-overlayCanvas.addEventListener('mouseup', endDrag);
-overlayCanvas.addEventListener('mouseleave', endDrag);
+overlayCanvas.addEventListener('mouseup', e => {
+    endDrag();
+    endPan();
+});
+overlayCanvas.addEventListener('mouseleave', e => {
+    endDrag();
+    endPan();
+});
+
+// ── Viewport: zoom (wheel) and pan (middle-click or Ctrl+drag) ──
+const canvasArea = document.querySelector('.canvas-area');
+
+canvasArea.addEventListener('wheel', e => {
+    if (!state.photo) return;
+    e.preventDefault();
+
+    const rect = canvasContainer.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+
+    // Mouse position relative to element center
+    const mx = e.clientX - cx;
+    const my = e.clientY - cy;
+
+    const oldZoom = state.viewport.zoom;
+    const delta = e.deltaY > 0 ? 0.9 : 1.1; // scroll down = zoom out
+    const newZoom = Math.max(0.25, Math.min(10, oldZoom * delta));
+
+    // Adjust pan so the point under the mouse stays fixed
+    state.viewport.panX = mx - (mx - state.viewport.panX) * (newZoom / oldZoom);
+    state.viewport.panY = my - (my - state.viewport.panY) * (newZoom / oldZoom);
+    state.viewport.zoom = newZoom;
+
+    applyViewTransform();
+}, { passive: false });
+
+// Pan: middle-click drag or Ctrl+left-click drag
+overlayCanvas.addEventListener('mousedown', e => {
+    if (!state.photo) return;
+    if (e.button === 1 || (e.button === 0 && e.ctrlKey)) {
+        e.preventDefault();
+        state.isPanning = true;
+        state.panStartScreenX = e.clientX;
+        state.panStartScreenY = e.clientY;
+        state.panStartOffsetX = state.viewport.panX;
+        state.panStartOffsetY = state.viewport.panY;
+        overlayCanvas.style.cursor = 'grabbing';
+    }
+});
+
+overlayCanvas.addEventListener('mousemove', e => {
+    if (state.isPanning) {
+        state.viewport.panX = state.panStartOffsetX + (e.clientX - state.panStartScreenX);
+        state.viewport.panY = state.panStartOffsetY + (e.clientY - state.panStartScreenY);
+        applyViewTransform();
+    }
+});
+
+function endPan() {
+    if (state.isPanning) {
+        state.isPanning = false;
+        overlayCanvas.style.cursor = '';
+    }
+}
+
+// Reset viewport
+function resetViewport() {
+    state.viewport = { zoom: 1, panX: 0, panY: 0 };
+    applyViewTransform();
+}
+
+$('btn-reset-view').addEventListener('click', resetViewport);
+
+// Prevent context menu on canvas so middle-click/right-click work for pan
+canvasArea.addEventListener('contextmenu', e => e.preventDefault());
 
 // Preset picker
 $('btn-add-preset').addEventListener('click', () => {
