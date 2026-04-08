@@ -330,7 +330,7 @@ function screenToCanvas(screenX, screenY) {
 }
 
 overlayCanvas.addEventListener('click', e => {
-    if (e.ctrlKey) return; // Ctrl+click is for panning, not placing markers
+    if (e.button !== 0) return; // left-click only
     const { canvasX, canvasY } = screenToCanvas(e.clientX, e.clientY);
     const imgX = (canvasX - (state.photoLayout.photoOffsetX || 0)) / state.photoLayout.scale;
     const imgY = (canvasY - (state.photoLayout.photoOffsetY || 0)) / state.photoLayout.scale;
@@ -698,7 +698,7 @@ selPreviewCam.addEventListener('change', render);
 
 // ── Camera FOV dragging ──
 overlayCanvas.addEventListener('mousedown', e => {
-    if (e.button !== 0 || e.ctrlKey) return; // left-click only, no Ctrl
+    if (e.button !== 0) return; // left-click only
     if (state.mode !== 'idle') return;
     if (state.cameras.length === 0 || !state.photoLayout) return;
 
@@ -804,7 +804,7 @@ canvasArea.addEventListener('wheel', e => {
 // Pan: middle-click drag, Ctrl+left-click drag, or plain left-click drag on empty area
 canvasArea.addEventListener('mousedown', e => {
     if (!state.photo) return;
-    if (e.button === 1 || (e.button === 0 && e.ctrlKey) || (e.button === 0 && e.target === canvasArea)) {
+    if (e.button === 2 || e.button === 1 || (e.button === 0 && e.target === canvasArea)) {
         e.preventDefault();
         state.isPanning = true;
         state.panStartScreenX = e.clientX;
