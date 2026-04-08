@@ -410,10 +410,16 @@ function confirmSingle() {
     if (unit === 'm') elevFt *= 3.281;
     if ($('marker-elev-dir').value === 'up') elevFt = -elevFt; // "up" means ground is higher, camera effectively lower
 
+    // Compute effective distance for the perspective model (adjusted for elevation)
+    const h = state.cameraHeight;
+    const effectiveH = h + (elevFt || 0);
+    const effDist = effectiveH > 0 ? dist * h / effectiveH : dist;
+
     state.markers.push({
         y: state.pendingMarker.y,
         groundDistFt: Math.round(dist * 10) / 10,
-        elevChangeFt: Math.round(elevFt * 10) / 10, // positive = ground lower (camera sees further down)
+        elevChangeFt: Math.round(elevFt * 10) / 10,
+        effectiveDistFt: Math.round(effDist * 10) / 10, // what the calibration actually uses
         type: 'single'
     });
 

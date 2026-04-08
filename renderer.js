@@ -100,7 +100,7 @@ export function renderOverlay(overlayCanvas, state) {
     const activeCameras = cameras.filter(c => c.visible);
 
     // Draw calibration markers
-    drawCalibrationMarkers(ctx, state.markers, scale, width, height, calibration, photoOffsetX, photoW, rotRad);
+    drawCalibrationMarkers(ctx, state.markers, scale, width, height, calibration, photoOffsetX, photoW, rotRad, phoneHFov);
 
     // Draw pending between-marker first point
     if (state.pendingMarker && state.pendingMarker.y1 !== undefined && state.mode === 'placing-between-2') {
@@ -136,7 +136,7 @@ export function renderOverlay(overlayCanvas, state) {
             drawFovBounds(ctx, activeCameras, phoneHFov, width, height, photoOffsetX, photoW, photoLayout.photoH || height, rotRad);
         }
         if (displayOptions.showRuler) {
-            drawDistanceRuler(ctx, calibration, scale, width, height, photoOffsetX, photoW, rotRad);
+            drawDistanceRuler(ctx, calibration, scale, width, height, photoOffsetX, photoW, rotRad, phoneHFov);
         }
     }
 
@@ -150,7 +150,7 @@ export function renderOverlay(overlayCanvas, state) {
     }
 }
 
-function drawCalibrationMarkers(ctx, markers, scale, canvasW, canvasH, calibration, photoOffsetX, photoW, rotRad) {
+function drawCalibrationMarkers(ctx, markers, scale, canvasW, canvasH, calibration, photoOffsetX, photoW, rotRad, phoneHFov) {
     const lineLeft = photoOffsetX;
     const lineRight = photoOffsetX + photoW;
     const cx = canvasW / 2;
@@ -159,31 +159,93 @@ function drawCalibrationMarkers(ctx, markers, scale, canvasW, canvasH, calibrati
     for (const marker of markers) {
         if (marker.type === 'single') {
             const y = marker.y * scale;
-            drawRotatedHLine(ctx, lineLeft, lineRight, y, canvasW, canvasH, rotRad, 'rgba(255,255,255,0.6)', 1.5, [6, 4]);
+            const curveDist = marker.effectiveDistFt || marker.groundDistFt;
 
-            let label = `${marker.groundDistFt} ft`;
-            if (marker.elevChangeFt) label += ` (${marker.elevChangeFt > 0 ? '↓' : '↑'}${Math.abs(marker.elevChangeFt)}')`;
-            drawRotatedLabel(ctx, label, lineLeft + 12, y - 5, cx, cy, rotRad);
+            if (calibration && phoneHFov) {
+                const pts = distanceCurvePoints(curveDist, lineLeft, lineRight, calibration, phoneHFov, photoW, photoOffsetX, scale);
+                strokeDistanceCurve(ctx, pts, canvasW, canvasH, rotRad, 'rgba(255,255,255,0.6)', 1.5, [6, 4]);
+
+                // Position label where the curve meets the left/bottom edge
+                const edgePt = curveEdgePoint(curveDist, calibration, phoneHFov, photoW, photoOffsetX, scale, canvasH);
+                let label = `${marker.groundDistFt} ft`;
+                if (marker.elevChangeFt) label += ` (${marker.elevChangeFt > 0 ? '↓' : '↑'}${Math.abs(marker.elevChangeFt)}')`;
+                if (edgePt.y >= canvasH - 1) {
+                    // Curve exits bottom — place label at bottom edge
+                    drawRotatedLabel(ctx, label, edgePt.x + 4, edgePt.y - 18, cx, cy, rotRad);
+                } else {
+                    // Curve reaches left edge — place label there
+                    drawRotatedLabel(ctx, label, edgePt.x + 4, edgePt.y - 5, cx, cy, rotRad);
+                }
+            } else {
+                drawRotatedHLine(ctx, lineLeft, lineRight, y, canvasW, canvasH, rotRad, 'rgba(255,255,255,0.6)', 1.5, [6, 4]);
+                let label = `${marker.groundDistFt} ft`;
+                if (marker.elevChangeFt) label += ` (${marker.elevChangeFt > 0 ? '↓' : '↑'}${Math.abs(marker.elevChangeFt)}')`;
+                drawRotatedLabel(ctx, label, lineLeft + 12, y - 5, cx, cy, rotRad);
+            }
         } else if (marker.type === 'between') {
             const y1 = marker.y1 * scale;
             const y2 = marker.y2 * scale;
 
-            // Bracket (drawn in canvas space — small enough that rotation doesn't matter much)
-            ctx.beginPath();
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-            ctx.lineWidth = 1;
-            ctx.moveTo(lineLeft + 20, y1);
-            ctx.lineTo(lineLeft + 12, y1);
-            ctx.lineTo(lineLeft + 12, y2);
-            ctx.lineTo(lineLeft + 20, y2);
-            ctx.stroke();
+            // Compute distances at each point from the calibration to draw curves
+            if (calibration && phoneHFov) {
+                const d1 = distanceAtRow(marker.y1, calibration);
+                const d2 = distanceAtRow(marker.y2, calibration);
+                let edge1 = null, edge2 = null;
 
-            for (const y of [y1, y2]) {
-                drawRotatedHLine(ctx, lineLeft, lineRight, y, canvasW, canvasH, rotRad, 'rgba(255,255,255,0.5)', 1.5, [6, 4]);
+                if (isFinite(d1) && d1 > 0) {
+                    const pts1 = distanceCurvePoints(d1, lineLeft, lineRight, calibration, phoneHFov, photoW, photoOffsetX, scale);
+                    strokeDistanceCurve(ctx, pts1, canvasW, canvasH, rotRad, 'rgba(255,255,255,0.5)', 1.5, [6, 4]);
+                    edge1 = curveEdgePoint(d1, calibration, phoneHFov, photoW, photoOffsetX, scale, canvasH);
+                }
+                if (isFinite(d2) && d2 > 0) {
+                    const pts2 = distanceCurvePoints(d2, lineLeft, lineRight, calibration, phoneHFov, photoW, photoOffsetX, scale);
+                    strokeDistanceCurve(ctx, pts2, canvasW, canvasH, rotRad, 'rgba(255,255,255,0.5)', 1.5, [6, 4]);
+                    edge2 = curveEdgePoint(d2, calibration, phoneHFov, photoW, photoOffsetX, scale, canvasH);
+                }
+
+                // Bracket and label positioned at curve edge points
+                if (edge1 && edge2) {
+                    ctx.save();
+                    ctx.translate(cx, cy);
+                    ctx.rotate(rotRad);
+                    ctx.translate(-cx, -cy);
+                    ctx.beginPath();
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+                    ctx.lineWidth = 1;
+                    ctx.moveTo(edge1.x + 16, edge1.y);
+                    ctx.lineTo(edge1.x + 8, edge1.y);
+                    ctx.lineTo(edge2.x + 8, edge2.y);
+                    ctx.lineTo(edge2.x + 16, edge2.y);
+                    ctx.stroke();
+                    ctx.restore();
+
+                    const midX = (edge1.x + edge2.x) / 2 + 20;
+                    const midY = (edge1.y + edge2.y) / 2;
+                    drawRotatedLabel(ctx, `↕ ${marker.distBetween} ft`, midX, midY + 5, cx, cy, rotRad);
+                }
+            } else {
+                for (const y of [y1, y2]) {
+                    drawRotatedHLine(ctx, lineLeft, lineRight, y, canvasW, canvasH, rotRad, 'rgba(255,255,255,0.5)', 1.5, [6, 4]);
+                }
+
+                // Bracket and label at raw positions
+                ctx.save();
+                ctx.translate(cx, cy);
+                ctx.rotate(rotRad);
+                ctx.translate(-cx, -cy);
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.lineWidth = 1;
+                ctx.moveTo(lineLeft + 20, y1);
+                ctx.lineTo(lineLeft + 12, y1);
+                ctx.lineTo(lineLeft + 12, y2);
+                ctx.lineTo(lineLeft + 20, y2);
+                ctx.stroke();
+                ctx.restore();
+
+                const midY = (y1 + y2) / 2;
+                drawRotatedLabel(ctx, `↕ ${marker.distBetween} ft`, lineLeft + 28, midY + 5, cx, cy, rotRad);
             }
-
-            const midY = (y1 + y2) / 2;
-            drawRotatedLabel(ctx, `↕ ${marker.distBetween} ft`, lineLeft + 28, midY + 5, cx, cy, rotRad);
         }
     }
 
@@ -224,6 +286,126 @@ function drawRotatedHLine(ctx, x1, x2, y, canvasW, canvasH, rotRad, color, lineW
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();
+}
+
+/**
+ * Build a curved path representing equal ground distance from the camera.
+ * In perspective, points at equal radial distance form a curve that bows
+ * downward at the edges: at horizontal angle θ, y = yH + k/(d·cos(θ)).
+ *
+ * @param {number} distance - ground distance in feet
+ * @param {number} xLeft - left pixel boundary
+ * @param {number} xRight - right pixel boundary
+ * @param {object} calibration - {yHorizon, k}
+ * @param {number} phoneHFov - phone horizontal FOV in degrees
+ * @param {number} photoW - photo width in pixels (canvas coords)
+ * @param {number} photoOffsetX - photo X offset in canvas
+ * @param {number} scale - image-to-canvas scale factor
+ * @returns {Array<{x,y}>} array of points forming the curve
+ */
+function distanceCurvePoints(distance, xLeft, xRight, calibration, phoneHFov, photoW, photoOffsetX, scale) {
+    const phoneHalfRad = Math.min(phoneHFov, 179) * Math.PI / 360;
+    const phoneHalfTan = Math.tan(phoneHalfRad);
+    const yH = calibration.yHorizon;
+    const k = calibration.k;
+    const steps = 50;
+    const points = [];
+
+    for (let i = 0; i <= steps; i++) {
+        const x = xLeft + (i / steps) * (xRight - xLeft);
+        // Convert x to horizontal angle from photo center
+        const xFrac = (x - photoOffsetX) / photoW; // 0..1 across photo
+        const xCentered = (xFrac - 0.5) * 2; // -1..1
+        const theta = Math.atan(xCentered * phoneHalfTan);
+        // y at this angle for the given distance
+        const imgY = yH + k / (distance * Math.cos(theta));
+        points.push({ x, y: imgY * scale });
+    }
+    return points;
+}
+
+/**
+ * Stroke a distance curve on the canvas.
+ */
+function strokeDistanceCurve(ctx, points, canvasW, canvasH, rotRad, color, lineWidth, dash) {
+    if (points.length < 2) return;
+    const cx = canvasW / 2, cy = canvasH / 2;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rotRad);
+    ctx.translate(-cx, -cy);
+    ctx.beginPath();
+    ctx.setLineDash(dash || []);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+}
+
+/**
+ * Fill between two distance curves (for PPF zone bands).
+ */
+function fillBetweenCurves(ctx, topPoints, bottomPoints, canvasW, canvasH, rotRad, fillStyle) {
+    if (topPoints.length < 2 || bottomPoints.length < 2) return;
+    const cx = canvasW / 2, cy = canvasH / 2;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rotRad);
+    ctx.translate(-cx, -cy);
+    ctx.beginPath();
+    // Top curve left to right
+    ctx.moveTo(topPoints[0].x, topPoints[0].y);
+    for (let i = 1; i < topPoints.length; i++) {
+        ctx.lineTo(topPoints[i].x, topPoints[i].y);
+    }
+    // Bottom curve right to left
+    for (let i = bottomPoints.length - 1; i >= 0; i--) {
+        ctx.lineTo(bottomPoints[i].x, bottomPoints[i].y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = fillStyle;
+    ctx.fill();
+    ctx.restore();
+}
+
+/**
+ * Find where a distance curve meets the left edge or bottom edge of the photo.
+ * Returns {x, y} in canvas coordinates for label placement.
+ */
+function curveEdgePoint(distance, calibration, phoneHFov, photoW, photoOffsetX, scale, canvasH) {
+    const phoneHalfRad = Math.min(phoneHFov, 179) * Math.PI / 360;
+    const phoneHalfTan = Math.tan(phoneHalfRad);
+    const yH = calibration.yHorizon;
+    const k = calibration.k;
+
+    // y at the left edge of the photo (θ = -phoneHFov/2)
+    const thetaLeft = -phoneHalfRad;
+    const yLeft = (yH + k / (distance * Math.cos(thetaLeft))) * scale;
+
+    if (yLeft <= canvasH) {
+        // Curve reaches the left edge within the photo
+        return { x: photoOffsetX, y: yLeft };
+    }
+
+    // Curve exits through the bottom — find the x where y = canvasH
+    // Solve: canvasH = (yH + k / (d * cos(θ))) * scale
+    // canvasH/scale = yH + k / (d * cos(θ))
+    // cos(θ) = k / (d * (canvasH/scale - yH))
+    const cosTheta = k / (distance * (canvasH / scale - yH));
+    if (cosTheta >= -1 && cosTheta <= 1) {
+        const theta = -Math.acos(cosTheta); // negative = left side
+        const xFrac = 0.5 + Math.tan(theta) / (2 * phoneHalfTan);
+        const x = photoOffsetX + xFrac * photoW;
+        return { x: Math.max(photoOffsetX, x), y: canvasH };
+    }
+
+    // Fallback — just use left edge
+    return { x: photoOffsetX, y: Math.min(yLeft, canvasH) };
 }
 
 /**
@@ -270,51 +452,63 @@ function drawPpfZones(ctx, cameras, calibration, scale, canvasW, canvasH, phoneH
 
         zones.sort((a, b) => a.distance - b.distance);
 
-        let prevY = canvasH;
+        // Build curve points for each zone boundary + bottom edge
+        const bottomPts = [];
+        for (let s = 0; s <= 50; s++) {
+            bottomPts.push({ x: zoneLeft + (s / 50) * (zoneRight - zoneLeft), y: canvasH });
+        }
+
+        let prevCurve = bottomPts;
+        let prevCenterY = canvasH;
 
         for (let i = 0; i < zones.length; i++) {
             const zone = zones[i];
             if (zone.row === null) continue;
-            const yPx = zone.row * scale;
+            const centerY = zone.row * scale;
+            if (centerY < 0) continue;
 
-            if (yPx < 0) continue;
-            const bandTop = Math.max(0, yPx);
-            const bandBottom = Math.min(canvasH, prevY);
+            // Build curved points for this zone boundary
+            const curve = distanceCurvePoints(zone.distance, zoneLeft, zoneRight, calibration, phoneHFov, photoW, photoOffsetX, scale);
 
-            if (bandBottom > bandTop) {
-                // Zone fill band (drawn in rotated space so it aligns with the scene)
-                const cx = canvasW / 2, cy = canvasH / 2;
-                ctx.save();
-                ctx.translate(cx, cy);
-                ctx.rotate(rotRad);
-                ctx.translate(-cx, -cy);
+            // Clamp curve points to canvas
+            const clampedCurve = curve.map(p => ({ x: p.x, y: Math.max(0, Math.min(canvasH, p.y)) }));
+            const clampedPrev = prevCurve.map(p => ({ x: p.x, y: Math.max(0, Math.min(canvasH, p.y)) }));
 
-                const alpha = numCameras > 1 ? 0.15 : 0.2;
-                ctx.fillStyle = hexToRgba(color, alpha);
-                ctx.fillRect(zoneLeft, bandTop, zoneRight - zoneLeft, bandBottom - bandTop);
+            // Fill between previous curve and this one
+            const alpha = numCameras > 1 ? 0.15 : 0.2;
+            fillBetweenCurves(ctx, clampedCurve, clampedPrev, canvasW, canvasH, rotRad, hexToRgba(color, alpha));
 
-                ctx.restore();
+            // Zone boundary curve
+            strokeDistanceCurve(ctx, clampedCurve, canvasW, canvasH, rotRad, hexToRgba(color, 0.6), 2, []);
 
-                // Zone boundary line
-                drawRotatedHLine(ctx, zoneLeft, zoneRight, bandTop, canvasW, canvasH, rotRad, hexToRgba(color, 0.6), 2, []);
-
-                // Label
-                const labelText = `${cam.name}: ${zone.label} (${zone.ppf} PPF) — ${Math.round(zone.distance)} ft`;
-                const labelX = zoneLeft + 10 + (numCameras > 1 ? ci * 6 : 0);
-                const labelY = bandTop + 14;
-                ctx.save();
-                ctx.translate(canvasW / 2, canvasH / 2);
-                ctx.rotate(rotRad);
-                ctx.translate(-canvasW / 2, -canvasH / 2);
-                ctx.font = 'bold 11px -apple-system, sans-serif';
-                const tw = ctx.measureText(labelText).width;
-                ctx.fillStyle = 'rgba(0,0,0,0.75)';
-                ctx.fillRect(labelX - 2, labelY - 12, tw + 6, 15);
-                ctx.fillStyle = color;
-                ctx.fillText(labelText, labelX + 1, labelY);
-                ctx.restore();
+            // Label at center of photo
+            // Position label where the curve meets the left/bottom edge
+            const labelText = `${cam.name}: ${zone.label} (${zone.ppf} PPF) — ${Math.round(zone.distance)} ft`;
+            const edgePt = curveEdgePoint(zone.distance, calibration, phoneHFov, photoW, photoOffsetX, scale, canvasH);
+            let labelX, labelY;
+            if (edgePt.y >= canvasH - 1) {
+                // Curve exits bottom edge
+                labelX = edgePt.x + 4 + (numCameras > 1 ? ci * 6 : 0);
+                labelY = edgePt.y - 18;
+            } else {
+                // Curve reaches left edge
+                labelX = edgePt.x + 4 + (numCameras > 1 ? ci * 6 : 0);
+                labelY = edgePt.y - 5;
             }
-            prevY = yPx;
+            ctx.save();
+            ctx.translate(canvasW / 2, canvasH / 2);
+            ctx.rotate(rotRad);
+            ctx.translate(-canvasW / 2, -canvasH / 2);
+            ctx.font = 'bold 11px -apple-system, sans-serif';
+            const tw = ctx.measureText(labelText).width;
+            ctx.fillStyle = 'rgba(0,0,0,0.75)';
+            ctx.fillRect(labelX - 2, labelY - 12, tw + 6, 15);
+            ctx.fillStyle = color;
+            ctx.fillText(labelText, labelX + 1, labelY);
+            ctx.restore();
+
+            prevCurve = curve;
+            prevCenterY = centerY;
         }
     }
 }
@@ -425,9 +619,7 @@ function drawFovBounds(ctx, cameras, phoneHFov, canvasW, canvasH, photoOffsetX, 
     }
 }
 
-function drawDistanceRuler(ctx, calibration, scale, canvasW, canvasH, photoOffsetX, photoW, rotRad) {
-    const rulerX = photoOffsetX + photoW + 6;
-
+function drawDistanceRuler(ctx, calibration, scale, canvasW, canvasH, photoOffsetX, photoW, rotRad, phoneHFov) {
     const topDist = distanceAtRow(0, { yHorizon: calibration.yHorizon, k: calibration.k });
     const bottomDist = distanceAtRow(canvasH / scale, { yHorizon: calibration.yHorizon, k: calibration.k });
 
@@ -442,18 +634,9 @@ function drawDistanceRuler(ctx, calibration, scale, canvasW, canvasH, photoOffse
     else if (range > 100) interval = 25;
     else if (range < 30) interval = 5;
 
-    // Draw entire ruler in rotated space
+    const lineLeft = photoOffsetX;
+    const lineRight = photoOffsetX + photoW;
     const cx = canvasW / 2, cy = canvasH / 2;
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(rotRad);
-    ctx.translate(-cx, -cy);
-
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    ctx.fillRect(rulerX, 0, 40, canvasH);
-
-    ctx.font = '10px -apple-system, sans-serif';
-    ctx.textAlign = 'left';
 
     for (let d = Math.ceil(minDist / interval) * interval; d <= maxDist; d += interval) {
         const row = rowAtDistance(d, calibration);
@@ -461,18 +644,25 @@ function drawDistanceRuler(ctx, calibration, scale, canvasW, canvasH, photoOffse
         const y = row * scale;
         if (y < 10 || y > canvasH - 5) continue;
 
-        ctx.beginPath();
-        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-        ctx.lineWidth = 1;
-        ctx.moveTo(rulerX, y);
-        ctx.lineTo(rulerX + 8, y);
-        ctx.stroke();
+        // Draw faint distance curve across the full photo width
+        if (phoneHFov) {
+            const pts = distanceCurvePoints(d, lineLeft, lineRight, calibration, phoneHFov, photoW, photoOffsetX, scale);
+            strokeDistanceCurve(ctx, pts, canvasW, canvasH, rotRad, 'rgba(255,255,255,0.12)', 0.5, [4, 8]);
+        }
 
+        // Label on the right edge
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(rotRad);
+        ctx.translate(-cx, -cy);
+        ctx.font = '10px -apple-system, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(lineRight + 4, y - 7, 32, 15);
         ctx.fillStyle = 'rgba(255,255,255,0.8)';
-        ctx.fillText(`${d}'`, rulerX + 10, y + 3);
+        ctx.fillText(`${d}'`, lineRight + 6, y + 4);
+        ctx.restore();
     }
-
-    ctx.restore();
 }
 
 /**
