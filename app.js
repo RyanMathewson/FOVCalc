@@ -783,17 +783,19 @@ canvasArea.addEventListener('wheel', e => {
     if (!state.photo) return;
     e.preventDefault();
 
-    const rect = canvasContainer.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-
-    const mx = e.clientX - cx;
-    const my = e.clientY - cy;
+    // Mouse position relative to the canvas area center (stable viewport)
+    const areaRect = canvasArea.getBoundingClientRect();
+    const mx = e.clientX - (areaRect.left + areaRect.width / 2);
+    const my = e.clientY - (areaRect.top + areaRect.height / 2);
 
     const oldZoom = state.viewport.zoom;
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
     const newZoom = Math.max(0.1, Math.min(10, oldZoom * delta));
 
+    // Adjust pan so the world point under the cursor stays fixed
+    // Before: worldPt = (mx - panX) / oldZoom
+    // After:  mx = worldPt * newZoom + newPanX
+    // So:     newPanX = mx - (mx - panX) * (newZoom / oldZoom)
     state.viewport.panX = mx - (mx - state.viewport.panX) * (newZoom / oldZoom);
     state.viewport.panY = my - (my - state.viewport.panY) * (newZoom / oldZoom);
     state.viewport.zoom = newZoom;
