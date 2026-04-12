@@ -162,9 +162,6 @@ input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; background: v
 .preview-container { background: #000; }
 .preview-container canvas { width: 100%; display: block; }
 
-/* ── Persistence toolbar ── */
-.persistence-toolbar { display: flex; gap: 6px; padding: 8px 0 4px; }
-.persistence-toolbar .btn { flex: 1; font-size: 12px; }
 
 /* ── Session restore banner ── */
 #restore-banner {
