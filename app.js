@@ -92,6 +92,12 @@ sidebarBackdrop.addEventListener('click', () => {
     sidebar.addEventListener('transitionend', () => fitCanvas(), { once: true });
 });
 
+// On mobile, open the sidebar by default to guide the user through the workflow
+if (window.innerWidth <= 768) {
+    sidebar.classList.add('open');
+    sidebarBackdrop.classList.add('visible');
+}
+
 // ── Header actions dropdown (mobile) ──
 const headerActions = document.querySelector('.header-actions');
 const headerMenuBtn = $('btn-header-menu');
@@ -455,15 +461,31 @@ uploadZone.addEventListener('drop', e => {
 });
 
 // ── Canvas sizing ──
+function getRenderScale() {
+    const dpr = window.devicePixelRatio || 1;
+    // Scale canvas backing store so zoomed-in views stay crisp.
+    // Start with zoom * dpr, capped at 4x.
+    let rs = Math.min(Math.max(state.viewport.zoom, 1) * dpr, 4);
+    // Also cap based on estimated canvas pixel count to avoid huge allocations.
+    // The canvas is ~3x photo width × 3x photo height; limit to ~16M backing pixels.
+    if (state.photoLayout) {
+        const maxPixels = 16_000_000;
+        const logicalPixels = state.photoLayout.width * state.photoLayout.height;
+        if (logicalPixels * rs * rs > maxPixels) {
+            rs = Math.sqrt(maxPixels / logicalPixels);
+        }
+    }
+    return Math.max(rs, 1);
+}
+
 function fitCanvas() {
     if (!state.photo) return;
     const area = document.querySelector('.canvas-area');
     const pad = 16;
     const availW = area.clientWidth - pad * 2;
     const availH = area.clientHeight - pad * 2;
-    state.photoLayout = drawPhoto(bgCanvas, state.photo, availW, availH, state.cameras, state.phoneHFov);
-    overlayCanvas.width = state.photoLayout.width;
-    overlayCanvas.height = state.photoLayout.height;
+    const rs = getRenderScale();
+    state.photoLayout = drawPhoto(bgCanvas, state.photo, availW, availH, state.cameras, state.phoneHFov, rs);
 
     // Set initial zoom so the photo area fits the viewport (canvas is expanded for 360° + vertical)
     if (state.viewport.zoom === 1 && state.viewport.panX === 0 && state.viewport.panY === 0) {
@@ -475,6 +497,25 @@ function fitCanvas() {
     applyViewTransform();
     render();
     scheduleSave();
+}
+
+// Re-render at current zoom level for crisp quality (called after zoom gestures end)
+let _zoomRenderTimer = null;
+function fitCanvasForZoom() {
+    // Debounce to avoid excessive re-renders during rapid zoom changes
+    clearTimeout(_zoomRenderTimer);
+    _zoomRenderTimer = setTimeout(() => {
+        if (!state.photo) return;
+        const area = document.querySelector('.canvas-area');
+        const pad = 16;
+        const availW = area.clientWidth - pad * 2;
+        const availH = area.clientHeight - pad * 2;
+        const rs = getRenderScale();
+        // Skip re-render if render scale hasn't changed meaningfully
+        if (state.photoLayout && Math.abs(rs - (state.photoLayout.renderScale || 1)) < 0.1) return;
+        state.photoLayout = drawPhoto(bgCanvas, state.photo, availW, availH, state.cameras, state.phoneHFov, rs);
+        render();
+    }, 150);
 }
 
 window.addEventListener('resize', fitCanvas);
@@ -529,9 +570,9 @@ function screenToCanvas(screenX, screenY) {
     const rx = dx2 * cos - dy2 * sin;
     const ry = dx2 * sin + dy2 * cos;
 
-    // Convert to canvas coordinates (relative to top-left)
-    const canvasW = overlayCanvas.width;
-    const canvasH = overlayCanvas.height;
+    // Convert to canvas coordinates (relative to top-left, using logical dimensions)
+    const canvasW = state.photoLayout ? state.photoLayout.width : overlayCanvas.width;
+    const canvasH = state.photoLayout ? state.photoLayout.height : overlayCanvas.height;
     const canvasX = rx + canvasW / 2;
     const canvasY = ry + canvasH / 2;
 
@@ -1015,6 +1056,7 @@ canvasArea.addEventListener('wheel', e => {
     state.viewport.zoom = newZoom;
 
     applyViewTransform();
+    fitCanvasForZoom(); // debounced re-render for crisp quality
 }, { passive: false });
 
 // Pan shared logic
@@ -1057,7 +1099,7 @@ canvasArea.addEventListener('mouseleave', () => endPan());
 let touchStartPos = null; // { x, y } for tap vs. drag detection
 let touchStartedDrag = false;
 
-// Touch: FOV drag on overlay canvas
+// Single-finger touch on overlay: FOV drag only (tap or drag camera aim)
 overlayCanvas.addEventListener('touchstart', e => {
     if (e.touches.length !== 1) return;
     const t = e.touches[0];
@@ -1066,7 +1108,6 @@ overlayCanvas.addEventListener('touchstart', e => {
     // Tentatively start drag — will only commit if finger moves >8px
     if (state.mode === 'idle' && state.cameras.length > 0 && state.photoLayout) {
         handleFovDragStart(t.clientX, t.clientY);
-        // Don't preventDefault yet — allow tap/click to fire if no movement
     }
 }, { passive: true });
 
@@ -1086,34 +1127,31 @@ overlayCanvas.addEventListener('touchmove', e => {
 
 overlayCanvas.addEventListener('touchend', e => {
     if (touchStartedDrag) {
-        // Was a drag — suppress the synthetic click
-        e.preventDefault();
+        e.preventDefault(); // suppress synthetic click after drag
     }
     endDrag();
     touchStartPos = null;
     touchStartedDrag = false;
 });
 
-// Touch: pan + pinch-to-zoom on canvas area
+// Two-finger touch on canvas area: simultaneous pan + pinch-to-zoom
 let pinchStartDist = 0;
 let pinchStartZoom = 1;
-let pinchMidX = 0, pinchMidY = 0;
+let pinchStartPanX = 0, pinchStartPanY = 0;
+let pinchStartMidX = 0, pinchStartMidY = 0;
 
 canvasArea.addEventListener('touchstart', e => {
     if (!state.photo) return;
     if (e.touches.length === 2) {
-        // Pinch-to-zoom
         e.preventDefault();
-        endPan(); // cancel any single-finger pan
+        endDrag(); // cancel any single-finger FOV drag
         const [t1, t2] = [e.touches[0], e.touches[1]];
         pinchStartDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
         pinchStartZoom = state.viewport.zoom;
-        const areaRect = canvasArea.getBoundingClientRect();
-        pinchMidX = (t1.clientX + t2.clientX) / 2 - (areaRect.left + areaRect.width / 2);
-        pinchMidY = (t1.clientY + t2.clientY) / 2 - (areaRect.top + areaRect.height / 2);
-    } else if (e.touches.length === 1 && e.target === canvasArea) {
-        // Single-finger pan on empty canvas area
-        handlePanStart(e.touches[0].clientX, e.touches[0].clientY);
+        pinchStartPanX = state.viewport.panX;
+        pinchStartPanY = state.viewport.panY;
+        pinchStartMidX = (t1.clientX + t2.clientX) / 2;
+        pinchStartMidY = (t1.clientY + t2.clientY) / 2;
     }
 }, { passive: false });
 
@@ -1122,20 +1160,35 @@ canvasArea.addEventListener('touchmove', e => {
         e.preventDefault();
         const [t1, t2] = [e.touches[0], e.touches[1]];
         const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        const midX = (t1.clientX + t2.clientX) / 2;
+        const midY = (t1.clientY + t2.clientY) / 2;
+
+        // Pan: track how the midpoint has moved
+        const panDeltaX = midX - pinchStartMidX;
+        const panDeltaY = midY - pinchStartMidY;
+
+        // Zoom: scale relative to initial pinch distance
         const scale = dist / pinchStartDist;
         const newZoom = Math.max(0.1, Math.min(10, pinchStartZoom * scale));
-        const oldZoom = state.viewport.zoom;
-        state.viewport.panX = pinchMidX - (pinchMidX - state.viewport.panX) * (newZoom / oldZoom);
-        state.viewport.panY = pinchMidY - (pinchMidY - state.viewport.panY) * (newZoom / oldZoom);
+
+        // Zoom around the initial midpoint (in viewport-relative coords)
+        const areaRect = canvasArea.getBoundingClientRect();
+        const anchorX = pinchStartMidX - (areaRect.left + areaRect.width / 2);
+        const anchorY = pinchStartMidY - (areaRect.top + areaRect.height / 2);
+        state.viewport.panX = anchorX - (anchorX - pinchStartPanX) * (newZoom / pinchStartZoom) + panDeltaX;
+        state.viewport.panY = anchorY - (anchorY - pinchStartPanY) * (newZoom / pinchStartZoom) + panDeltaY;
         state.viewport.zoom = newZoom;
         applyViewTransform();
-    } else if (state.isPanning && e.touches.length === 1) {
-        e.preventDefault();
-        handlePanMove(e.touches[0].clientX, e.touches[0].clientY);
     }
 }, { passive: false });
 
-canvasArea.addEventListener('touchend', () => { endDrag(); endPan(); });
+canvasArea.addEventListener('touchend', e => {
+    endDrag();
+    // Re-render at new zoom level for crisp quality after gesture ends
+    if (e.touches.length === 0 && state.photo) {
+        fitCanvasForZoom();
+    }
+});
 
 // Reset viewport
 function resetViewport() {
@@ -1149,6 +1202,7 @@ function resetViewport() {
         state.viewport = { zoom: 1, panX: 0, panY: 0 };
     }
     applyViewTransform();
+    fitCanvasForZoom();
 }
 
 $('btn-reset-view').addEventListener('click', resetViewport);

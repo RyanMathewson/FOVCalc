@@ -4,7 +4,9 @@ import { distanceAtRow, rowAtDistance, ppfAtDistance, distanceAtPpf, PPF_ZONES, 
  * Draw the photo on the background canvas, scaled to fit.
  * If cameras have wider FOV than the phone, expand the canvas to show the full FOV.
  */
-export function drawPhoto(bgCanvas, image, containerW, containerH, cameras, phoneHFov) {
+export function drawPhoto(bgCanvas, image, containerW, containerH, cameras, phoneHFov, renderScale) {
+    renderScale = renderScale || 1;
+
     // Base scale: fit photo in container
     const baseScale = Math.min(containerW / image.naturalWidth, containerH / image.naturalHeight, 1);
 
@@ -22,9 +24,13 @@ export function drawPhoto(bgCanvas, image, containerW, containerH, cameras, phon
     const photoOffsetX = Math.round((canvasW - photoW) / 2);
     const photoOffsetY = Math.round((canvasH - photoH) / 2);
 
-    bgCanvas.width = canvasW;
-    bgCanvas.height = canvasH;
+    // High-res backing store: multiply by renderScale for crisp rendering when zoomed
+    bgCanvas.width = Math.round(canvasW * renderScale);
+    bgCanvas.height = Math.round(canvasH * renderScale);
+    bgCanvas.style.width = canvasW + 'px';
+    bgCanvas.style.height = canvasH + 'px';
     const ctx = bgCanvas.getContext('2d');
+    ctx.scale(renderScale, renderScale);
 
     // Fill entire canvas with dark background
     ctx.fillStyle = '#0a0a14';
@@ -55,7 +61,7 @@ export function drawPhoto(bgCanvas, image, containerW, containerH, cameras, phon
     // Draw the photo
     ctx.drawImage(image, photoOffsetX, photoOffsetY, photoW, photoH);
 
-    return { scale: baseScale, width: canvasW, height: canvasH, photoW, photoH, photoOffsetX, photoOffsetY, expandRatio: hExpand };
+    return { scale: baseScale, width: canvasW, height: canvasH, photoW, photoH, photoOffsetX, photoOffsetY, expandRatio: hExpand, renderScale };
 }
 
 /**
@@ -65,11 +71,15 @@ export function renderOverlay(overlayCanvas, state) {
     const { photoLayout, calibration, cameras, phoneHFov, displayOptions, photoRotation } = state;
     if (!photoLayout) return;
 
-    const { scale, width, height, photoW, photoH, photoOffsetX, photoOffsetY } = photoLayout;
+    const { scale, width, height, photoW, photoH, photoOffsetX, photoOffsetY, renderScale: rs } = photoLayout;
+    const renderScale = rs || 1;
     const oY = photoOffsetY || 0; // vertical offset for the photo in the canvas
-    overlayCanvas.width = width;
-    overlayCanvas.height = height;
+    overlayCanvas.width = Math.round(width * renderScale);
+    overlayCanvas.height = Math.round(height * renderScale);
+    overlayCanvas.style.width = width + 'px';
+    overlayCanvas.style.height = height + 'px';
     const ctx = overlayCanvas.getContext('2d');
+    ctx.scale(renderScale, renderScale);
     ctx.clearRect(0, 0, width, height);
 
     // Counter-rotation angle: negate the CSS rotation so drawn lines appear level
