@@ -366,6 +366,7 @@ function loadPhoto(file) {
             fitCanvas();
             detectPhoneFromExif(file);
             updateStepWizard();
+            document.getElementById('restore-banner')?.remove();
             // On mobile, close sidebar so user sees the photo
             if (window.innerWidth <= 768) closeSidebar();
         };
