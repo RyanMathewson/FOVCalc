@@ -118,7 +118,7 @@ export function renderOverlay(overlayCanvas, state) {
 
     if (calibration && activeCameras.length > 0) {
         if (displayOptions.showPpf) {
-            drawPpfZones(ctx, activeCameras, calibration, scale, width, height, phoneHFov, photoOffsetX, photoW, rotRad, oY);
+            drawPpfZones(ctx, activeCameras, calibration, scale, width, height, phoneHFov, photoOffsetX, photoW, rotRad, oY, displayOptions.showPpfLabels ?? true);
         }
         if (displayOptions.showFov) {
             drawFovBounds(ctx, activeCameras, phoneHFov, width, height, photoOffsetX, photoW, photoH || height, rotRad, oY);
@@ -412,7 +412,7 @@ function drawRotatedLabel(ctx, text, x, y, cx, cy, rotRad) {
     ctx.restore();
 }
 
-function drawPpfZones(ctx, cameras, calibration, scale, canvasW, canvasH, phoneHFov, photoOffsetX, photoW, rotRad, oY) {
+function drawPpfZones(ctx, cameras, calibration, scale, canvasW, canvasH, phoneHFov, photoOffsetX, photoW, rotRad, oY, showLabels) {
     const numCameras = cameras.length;
 
     for (let ci = 0; ci < cameras.length; ci++) {
@@ -469,29 +469,31 @@ function drawPpfZones(ctx, cameras, calibration, scale, canvasW, canvasH, phoneH
             strokeDistanceCurve(ctx, clampedCurve, canvasW, canvasH, rotRad, hexToRgba(color, 0.6), 2, []);
 
             // Label — position where curve meets left/bottom edge
-            const labelText = `${cam.name}: ${zone.label} (${zone.ppf} PPF) — ${Math.round(zone.distance)} ft`;
-            const edgePt = curveEdgePoint(zone.distance, calibration, phoneHFov, photoW, photoOffsetX, scale, canvasH, oY);
-            let labelX, labelY;
-            if (edgePt.y >= canvasH - 1) {
-                // Curve exits bottom edge
-                labelX = edgePt.x + 4 + (numCameras > 1 ? ci * 6 : 0);
-                labelY = edgePt.y - 18;
-            } else {
-                // Curve reaches left edge
-                labelX = edgePt.x + 4 + (numCameras > 1 ? ci * 6 : 0);
-                labelY = edgePt.y - 5;
+            if (showLabels) {
+                const labelText = `${cam.name}: ${zone.label} (${zone.ppf} PPF) — ${Math.round(zone.distance)} ft`;
+                const edgePt = curveEdgePoint(zone.distance, calibration, phoneHFov, photoW, photoOffsetX, scale, canvasH, oY);
+                let labelX, labelY;
+                if (edgePt.y >= canvasH - 1) {
+                    // Curve exits bottom edge
+                    labelX = edgePt.x + 4 + (numCameras > 1 ? ci * 6 : 0);
+                    labelY = edgePt.y - 18;
+                } else {
+                    // Curve reaches left edge
+                    labelX = edgePt.x + 4 + (numCameras > 1 ? ci * 6 : 0);
+                    labelY = edgePt.y - 5;
+                }
+                ctx.save();
+                ctx.translate(canvasW / 2, canvasH / 2);
+                ctx.rotate(rotRad);
+                ctx.translate(-canvasW / 2, -canvasH / 2);
+                ctx.font = 'bold 11px -apple-system, sans-serif';
+                const tw = ctx.measureText(labelText).width;
+                ctx.fillStyle = 'rgba(0,0,0,0.75)';
+                ctx.fillRect(labelX - 2, labelY - 12, tw + 6, 15);
+                ctx.fillStyle = color;
+                ctx.fillText(labelText, labelX + 1, labelY);
+                ctx.restore();
             }
-            ctx.save();
-            ctx.translate(canvasW / 2, canvasH / 2);
-            ctx.rotate(rotRad);
-            ctx.translate(-canvasW / 2, -canvasH / 2);
-            ctx.font = 'bold 11px -apple-system, sans-serif';
-            const tw = ctx.measureText(labelText).width;
-            ctx.fillStyle = 'rgba(0,0,0,0.75)';
-            ctx.fillRect(labelX - 2, labelY - 12, tw + 6, 15);
-            ctx.fillStyle = color;
-            ctx.fillText(labelText, labelX + 1, labelY);
-            ctx.restore();
 
             prevCurve = curve;
             prevCenterY = centerY;

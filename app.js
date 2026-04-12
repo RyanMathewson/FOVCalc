@@ -13,7 +13,7 @@ const state = {
     markers: [],
     calibration: null,
     cameras: [],
-    displayOptions: { showPpf: true, showFov: true, showRuler: true, showMiniMap: true },
+    displayOptions: { showPpf: true, showPpfLabels: true, showFov: true, showRuler: true, showMiniMap: true },
     photoLayout: null,
     cameraHeight: 9, // feet, from ground to camera
     cameraHeightUnit: 'ft',
@@ -275,8 +275,9 @@ function restoreSession(saved) {
     $('sel-height-unit').value = state.cameraHeightUnit;
     inputRotation.value = state.photoRotation;
     rotationValue.textContent = `${state.photoRotation}°`;
-    $('opt-ppf').checked    = state.displayOptions.showPpf;
-    $('opt-fov').checked    = state.displayOptions.showFov;
+    $('opt-ppf').checked         = state.displayOptions.showPpf;
+    $('opt-ppf-labels').checked  = state.displayOptions.showPpfLabels ?? true;
+    $('opt-fov').checked         = state.displayOptions.showFov;
     $('opt-ruler').checked  = state.displayOptions.showRuler;
     $('opt-minimap').checked = state.displayOptions.showMiniMap;
 
@@ -1280,7 +1281,22 @@ $('btn-save-custom').addEventListener('click', () => {
 });
 
 // ── Display options ──
-$('opt-ppf').addEventListener('change', e => { state.displayOptions.showPpf = e.target.checked; render(); scheduleSave(); });
+$('opt-ppf').addEventListener('change', e => {
+    state.displayOptions.showPpf = e.target.checked;
+    if (!e.target.checked) {
+        state.displayOptions.showPpfLabels = false;
+        $('opt-ppf-labels').checked = false;
+    }
+    render(); scheduleSave();
+});
+$('opt-ppf-labels').addEventListener('change', e => {
+    state.displayOptions.showPpfLabels = e.target.checked;
+    if (e.target.checked && !state.displayOptions.showPpf) {
+        state.displayOptions.showPpf = true;
+        $('opt-ppf').checked = true;
+    }
+    render(); scheduleSave();
+});
 $('opt-fov').addEventListener('change', e => { state.displayOptions.showFov = e.target.checked; render(); scheduleSave(); });
 $('opt-ruler').addEventListener('change', e => { state.displayOptions.showRuler = e.target.checked; render(); scheduleSave(); });
 $('opt-minimap').addEventListener('change', e => { state.displayOptions.showMiniMap = e.target.checked; render(); scheduleSave(); });
