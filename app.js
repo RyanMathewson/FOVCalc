@@ -62,6 +62,58 @@ const previewInfo = $('preview-info');
 const inputRotation = $('input-rotation');
 const rotationValue = $('rotation-value');
 
+// ── Mobile sidebar toggle ──
+const sidebar = document.querySelector('.sidebar');
+const sidebarToggle = document.createElement('button');
+sidebarToggle.id = 'btn-sidebar-toggle';
+sidebarToggle.textContent = '\u2630'; // hamburger ☰
+document.querySelector('header').insertBefore(sidebarToggle, document.querySelector('header').firstChild);
+
+const sidebarBackdrop = document.createElement('div');
+sidebarBackdrop.className = 'sidebar-backdrop';
+document.body.appendChild(sidebarBackdrop);
+
+function closeSidebar() {
+    sidebar.classList.remove('open');
+    sidebarBackdrop.classList.remove('visible');
+}
+
+sidebarToggle.addEventListener('click', () => {
+    const opening = !sidebar.classList.contains('open');
+    sidebar.classList.toggle('open');
+    sidebarBackdrop.classList.toggle('visible');
+    if (!opening) {
+        // Sidebar closed — refit canvas after transition
+        sidebar.addEventListener('transitionend', () => fitCanvas(), { once: true });
+    }
+});
+sidebarBackdrop.addEventListener('click', () => {
+    closeSidebar();
+    sidebar.addEventListener('transitionend', () => fitCanvas(), { once: true });
+});
+
+// ── Header actions dropdown (mobile) ──
+const headerActions = document.querySelector('.header-actions');
+const headerMenuBtn = $('btn-header-menu');
+
+headerMenuBtn.addEventListener('click', () => {
+    headerActions.classList.toggle('open');
+});
+
+// Close dropdown when any action button is clicked
+headerActions.addEventListener('click', e => {
+    if (e.target.closest('button')) {
+        headerActions.classList.remove('open');
+    }
+});
+
+// Close dropdown when tapping outside
+document.addEventListener('click', e => {
+    if (!e.target.closest('.header-actions') && !e.target.closest('#btn-header-menu')) {
+        headerActions.classList.remove('open');
+    }
+});
+
 // ── Step-wizard panel helpers ──
 
 function updateStepWizard() {
@@ -314,6 +366,8 @@ function loadPhoto(file) {
             fitCanvas();
             detectPhoneFromExif(file);
             updateStepWizard();
+            // On mobile, close sidebar so user sees the photo
+            if (window.innerWidth <= 768) closeSidebar();
         };
         img.src = e.target.result;
     };
@@ -866,18 +920,16 @@ function updateCameraList() {
 
 selPreviewCam.addEventListener('change', render);
 
-// ── Camera FOV dragging ──
-overlayCanvas.addEventListener('mousedown', e => {
-    if (e.button !== 0) return; // left-click only
-    if (state.mode !== 'idle') return;
-    if (state.cameras.length === 0 || !state.photoLayout) return;
+// ── Camera FOV dragging (shared logic) ──
 
-    // Check if clicking in a camera's FOV zone area — enable drag
-    const { canvasX: x } = screenToCanvas(e.clientX, e.clientY);
+function handleFovDragStart(clientX, clientY) {
+    if (state.mode !== 'idle') return false;
+    if (state.cameras.length === 0 || !state.photoLayout) return false;
+
+    const { canvasX: x } = screenToCanvas(clientX, clientY);
     const activeCameras = state.cameras.filter(c => c.visible);
-    if (activeCameras.length === 0) return;
+    if (activeCameras.length === 0) return false;
 
-    // Find which camera the user is likely trying to drag
     const photoW = state.photoLayout.photoW || state.photoLayout.width;
     const photoOffsetX = state.photoLayout.photoOffsetX || 0;
     let bestCam = null;
@@ -887,14 +939,11 @@ overlayCanvas.addEventListener('mousedown', e => {
         const bounds = fovBounds(cam.hFov, state.phoneHFov, photoW, cam.panOffset || 0);
         const centerX = photoOffsetX + (bounds.left + bounds.right) / 2;
         const d = Math.abs(x - centerX);
-        if (d < bestDist) {
-            bestDist = d;
-            bestCam = cam;
-        }
+        if (d < bestDist) { bestDist = d; bestCam = cam; }
     }
 
     if (bestCam) {
-        const { canvasY: y } = screenToCanvas(e.clientX, e.clientY);
+        const { canvasY: y } = screenToCanvas(clientX, clientY);
         state.mode = 'dragging-cam';
         state.draggingCamera = bestCam;
         state.dragStartX = x;
@@ -902,58 +951,56 @@ overlayCanvas.addEventListener('mousedown', e => {
         state.dragStartPan = bestCam.panOffset;
         state.dragStartTilt = bestCam.tiltOffset;
         overlayCanvas.classList.add('drag-fov');
-        e.preventDefault();
+        return true;
     }
-});
+    return false;
+}
 
-overlayCanvas.addEventListener('mousemove', e => {
-    if (state.mode === 'dragging-cam' && state.draggingCamera) {
-        const { canvasX: x, canvasY: y } = screenToCanvas(e.clientX, e.clientY);
-        const dx = x - state.dragStartX;
-        const dy = y - state.dragStartY;
+function handleFovDragMove(clientX, clientY) {
+    if (state.mode !== 'dragging-cam' || !state.draggingCamera) return;
+    const { canvasX: x, canvasY: y } = screenToCanvas(clientX, clientY);
+    const dx = x - state.dragStartX;
+    const dy = y - state.dragStartY;
 
-        const photoW = state.photoLayout.photoW || state.photoLayout.width;
-        const photoH = state.photoLayout.photoH || state.photoLayout.height;
+    const photoW = state.photoLayout.photoW || state.photoLayout.width;
+    const photoH = state.photoLayout.photoH || state.photoLayout.height;
+    const zoom = state.viewport.zoom;
 
-        // Account for viewport zoom: at higher zoom, same mouse delta = less angle
-        const zoom = state.viewport.zoom;
+    const hDegreesPerPixel = state.phoneHFov / (photoW * zoom);
+    const cam = state.draggingCamera;
+    cam.panOffset = Math.max(-90, Math.min(90, state.dragStartPan + dx * hDegreesPerPixel));
 
-        // Horizontal: pan
-        const hDegreesPerPixel = state.phoneHFov / (photoW * zoom);
-        const cam = state.draggingCamera;
-        cam.panOffset = Math.max(-90, Math.min(90, state.dragStartPan + dx * hDegreesPerPixel));
+    const phoneVFov = 2 * Math.atan(Math.tan(state.phoneHFov * Math.PI / 360) * photoH / photoW) * 180 / Math.PI;
+    const vDegreesPerPixel = phoneVFov / (photoH * zoom);
+    cam.tiltOffset = Math.max(-45, Math.min(45, state.dragStartTilt - dy * vDegreesPerPixel));
 
-        // Vertical: tilt (dragging up = positive tilt = camera points higher)
-        const phoneVFov = 2 * Math.atan(Math.tan(state.phoneHFov * Math.PI / 360) * photoH / photoW) * 180 / Math.PI;
-        const vDegreesPerPixel = phoneVFov / (photoH * zoom);
-        cam.tiltOffset = Math.max(-45, Math.min(45, state.dragStartTilt - dy * vDegreesPerPixel));
-
-        render();
-    }
-});
+    render();
+}
 
 function endDrag() {
     if (state.mode === 'dragging-cam') {
         state.mode = 'idle';
         state.draggingCamera = null;
         overlayCanvas.classList.remove('drag-fov');
-        fitCanvas(); // re-fit in case pan changed expansion
+        fitCanvas();
     }
 }
 
-overlayCanvas.addEventListener('mouseup', e => {
-    endDrag();
+// Mouse: FOV drag
+overlayCanvas.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    if (handleFovDragStart(e.clientX, e.clientY)) e.preventDefault();
 });
+overlayCanvas.addEventListener('mousemove', e => handleFovDragMove(e.clientX, e.clientY));
+overlayCanvas.addEventListener('mouseup', () => endDrag());
 
-// ── Viewport: zoom (wheel) and pan (middle-click or Ctrl+drag) ──
-// Attached to the full canvas area so panning/zooming works anywhere in the viewport
+// ── Viewport: zoom (wheel) and pan ──
 const canvasArea = document.querySelector('.canvas-area');
 
 canvasArea.addEventListener('wheel', e => {
     if (!state.photo) return;
     e.preventDefault();
 
-    // Mouse position relative to the canvas area center (stable viewport)
     const areaRect = canvasArea.getBoundingClientRect();
     const mx = e.clientX - (areaRect.left + areaRect.width / 2);
     const my = e.clientY - (areaRect.top + areaRect.height / 2);
@@ -962,10 +1009,6 @@ canvasArea.addEventListener('wheel', e => {
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
     const newZoom = Math.max(0.1, Math.min(10, oldZoom * delta));
 
-    // Adjust pan so the world point under the cursor stays fixed
-    // Before: worldPt = (mx - panX) / oldZoom
-    // After:  mx = worldPt * newZoom + newPanX
-    // So:     newPanX = mx - (mx - panX) * (newZoom / oldZoom)
     state.viewport.panX = mx - (mx - state.viewport.panX) * (newZoom / oldZoom);
     state.viewport.panY = my - (my - state.viewport.panY) * (newZoom / oldZoom);
     state.viewport.zoom = newZoom;
@@ -973,35 +1016,22 @@ canvasArea.addEventListener('wheel', e => {
     applyViewTransform();
 }, { passive: false });
 
-// Pan: middle-click drag, Ctrl+left-click drag, or plain left-click drag on empty area
-canvasArea.addEventListener('mousedown', e => {
-    if (!state.photo) return;
-    if (e.button === 2 || e.button === 1 || (e.button === 0 && e.target === canvasArea)) {
-        e.preventDefault();
-        state.isPanning = true;
-        state.panStartScreenX = e.clientX;
-        state.panStartScreenY = e.clientY;
-        state.panStartOffsetX = state.viewport.panX;
-        state.panStartOffsetY = state.viewport.panY;
-        canvasArea.style.cursor = 'grabbing';
-    }
-});
+// Pan shared logic
+function handlePanStart(clientX, clientY) {
+    state.isPanning = true;
+    state.panStartScreenX = clientX;
+    state.panStartScreenY = clientY;
+    state.panStartOffsetX = state.viewport.panX;
+    state.panStartOffsetY = state.viewport.panY;
+    canvasArea.style.cursor = 'grabbing';
+}
 
-canvasArea.addEventListener('mousemove', e => {
-    if (state.isPanning) {
-        state.viewport.panX = state.panStartOffsetX + (e.clientX - state.panStartScreenX);
-        state.viewport.panY = state.panStartOffsetY + (e.clientY - state.panStartScreenY);
-        applyViewTransform();
-    }
-});
-
-canvasArea.addEventListener('mouseup', e => {
-    endDrag();
-    endPan();
-});
-canvasArea.addEventListener('mouseleave', e => {
-    endPan();
-});
+function handlePanMove(clientX, clientY) {
+    if (!state.isPanning) return;
+    state.viewport.panX = state.panStartOffsetX + (clientX - state.panStartScreenX);
+    state.viewport.panY = state.panStartOffsetY + (clientY - state.panStartScreenY);
+    applyViewTransform();
+}
 
 function endPan() {
     if (state.isPanning) {
@@ -1009,6 +1039,102 @@ function endPan() {
         canvasArea.style.cursor = '';
     }
 }
+
+// Mouse: pan (middle-click, Ctrl+drag, or click on empty area)
+canvasArea.addEventListener('mousedown', e => {
+    if (!state.photo) return;
+    if (e.button === 2 || e.button === 1 || (e.button === 0 && e.target === canvasArea)) {
+        e.preventDefault();
+        handlePanStart(e.clientX, e.clientY);
+    }
+});
+canvasArea.addEventListener('mousemove', e => handlePanMove(e.clientX, e.clientY));
+canvasArea.addEventListener('mouseup', () => { endDrag(); endPan(); });
+canvasArea.addEventListener('mouseleave', () => endPan());
+
+// ── Touch events ──
+let touchStartPos = null; // { x, y } for tap vs. drag detection
+let touchStartedDrag = false;
+
+// Touch: FOV drag on overlay canvas
+overlayCanvas.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    touchStartPos = { x: t.clientX, y: t.clientY };
+    touchStartedDrag = false;
+    // Tentatively start drag — will only commit if finger moves >8px
+    if (state.mode === 'idle' && state.cameras.length > 0 && state.photoLayout) {
+        handleFovDragStart(t.clientX, t.clientY);
+        // Don't preventDefault yet — allow tap/click to fire if no movement
+    }
+}, { passive: true });
+
+overlayCanvas.addEventListener('touchmove', e => {
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    if (touchStartPos && !touchStartedDrag) {
+        const dist = Math.hypot(t.clientX - touchStartPos.x, t.clientY - touchStartPos.y);
+        if (dist < 8) return; // not a drag yet
+        touchStartedDrag = true;
+    }
+    if (state.mode === 'dragging-cam') {
+        e.preventDefault();
+        handleFovDragMove(t.clientX, t.clientY);
+    }
+}, { passive: false });
+
+overlayCanvas.addEventListener('touchend', e => {
+    if (touchStartedDrag) {
+        // Was a drag — suppress the synthetic click
+        e.preventDefault();
+    }
+    endDrag();
+    touchStartPos = null;
+    touchStartedDrag = false;
+});
+
+// Touch: pan + pinch-to-zoom on canvas area
+let pinchStartDist = 0;
+let pinchStartZoom = 1;
+let pinchMidX = 0, pinchMidY = 0;
+
+canvasArea.addEventListener('touchstart', e => {
+    if (!state.photo) return;
+    if (e.touches.length === 2) {
+        // Pinch-to-zoom
+        e.preventDefault();
+        endPan(); // cancel any single-finger pan
+        const [t1, t2] = [e.touches[0], e.touches[1]];
+        pinchStartDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        pinchStartZoom = state.viewport.zoom;
+        const areaRect = canvasArea.getBoundingClientRect();
+        pinchMidX = (t1.clientX + t2.clientX) / 2 - (areaRect.left + areaRect.width / 2);
+        pinchMidY = (t1.clientY + t2.clientY) / 2 - (areaRect.top + areaRect.height / 2);
+    } else if (e.touches.length === 1 && e.target === canvasArea) {
+        // Single-finger pan on empty canvas area
+        handlePanStart(e.touches[0].clientX, e.touches[0].clientY);
+    }
+}, { passive: false });
+
+canvasArea.addEventListener('touchmove', e => {
+    if (e.touches.length === 2) {
+        e.preventDefault();
+        const [t1, t2] = [e.touches[0], e.touches[1]];
+        const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        const scale = dist / pinchStartDist;
+        const newZoom = Math.max(0.1, Math.min(10, pinchStartZoom * scale));
+        const oldZoom = state.viewport.zoom;
+        state.viewport.panX = pinchMidX - (pinchMidX - state.viewport.panX) * (newZoom / oldZoom);
+        state.viewport.panY = pinchMidY - (pinchMidY - state.viewport.panY) * (newZoom / oldZoom);
+        state.viewport.zoom = newZoom;
+        applyViewTransform();
+    } else if (state.isPanning && e.touches.length === 1) {
+        e.preventDefault();
+        handlePanMove(e.touches[0].clientX, e.touches[0].clientY);
+    }
+}, { passive: false });
+
+canvasArea.addEventListener('touchend', () => { endDrag(); endPan(); });
 
 // Reset viewport
 function resetViewport() {

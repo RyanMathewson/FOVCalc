@@ -20,11 +20,13 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 
 /* Layout */
 .app { display: flex; flex-direction: column; height: 100vh; }
-header { height: var(--header-h); background: var(--sidebar-bg); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 16px; gap: 12px; flex-shrink: 0; }
+header { height: var(--header-h); background: var(--sidebar-bg); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 16px; gap: 12px; flex-shrink: 0; position: relative; }
 header h1 { font-size: 16px; font-weight: 600; white-space: nowrap; }
 header .spacer { flex: 1; }
 header button { background: var(--card-bg); border: 1px solid var(--border); color: var(--text); padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
 header button:hover { background: var(--accent); border-color: var(--accent); }
+.header-actions { display: contents; }
+.header-menu-toggle { display: none; }
 
 .main { display: flex; flex: 1; overflow: hidden; }
 
@@ -186,3 +188,83 @@ input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; background: v
     cursor: pointer;
 }
 #restore-banner button:hover { color: var(--text); border-color: var(--text-dim); }
+
+/* Sidebar toggle (hamburger) — hidden on desktop */
+#btn-sidebar-toggle { display: none; }
+
+/* Sidebar backdrop — hidden by default */
+.sidebar-backdrop { display: none; }
+
+/* Touch: prevent browser gestures on interactive canvas areas */
+.canvas-area, #overlay-canvas { touch-action: none; }
+
+/* ── Mobile / Tablet ── */
+@media (max-width: 768px) {
+    header { height: auto; min-height: var(--header-h); padding: 6px 10px; gap: 6px; }
+    header h1 { font-size: 14px; }
+
+    #btn-sidebar-toggle {
+        display: block;
+        background: none;
+        border: none;
+        color: var(--text);
+        font-size: 22px;
+        padding: 2px 6px;
+        cursor: pointer;
+        line-height: 1;
+    }
+
+    .header-menu-toggle {
+        display: block;
+        background: none;
+        border: 1px solid var(--border);
+        color: var(--text);
+        font-size: 18px;
+        padding: 2px 8px;
+        border-radius: 6px;
+        cursor: pointer;
+        line-height: 1;
+    }
+    .header-menu-toggle:hover { background: var(--accent); border-color: var(--accent); }
+
+    .header-actions {
+        display: none;
+        position: absolute;
+        top: 100%;
+        right: 0;
+        background: var(--sidebar-bg);
+        border: 1px solid var(--border);
+        border-radius: 0 0 8px 8px;
+        padding: 6px;
+        z-index: 70;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 180px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .header-actions.open { display: flex; }
+    .header-actions button { width: 100%; text-align: left; padding: 8px 12px; font-size: 13px; border-radius: 4px; }
+
+    .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        z-index: 60;
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
+        border-right: 1px solid var(--border);
+    }
+    .sidebar.open { transform: translateX(0); }
+
+    .sidebar-backdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.4);
+        z-index: 55;
+    }
+    .sidebar-backdrop.visible { display: block; }
+
+    .upload-zone { margin: 16px; }
+}
