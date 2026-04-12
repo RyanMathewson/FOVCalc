@@ -132,10 +132,11 @@ input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; background: v
 .panel-header .step-check { color: var(--green); font-size: 13px; display: none; flex-shrink: 0; }
 .panel.complete .panel-header .step-check { display: inline; }
 .panel.complete .panel-header h3 { color: var(--text-dim); }
-.panel-header .chevron { color: var(--text-dim); font-size: 11px; transition: transform 0.2s; flex-shrink: 0; }
+.panel-header .chevron { color: var(--text); font-size: 20px; transition: transform 0.2s; flex-shrink: 0; }
 .panel.collapsed .panel-header .chevron { transform: rotate(-90deg); }
 .panel-header .panel-summary { font-size: 11px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: none; }
-.panel.collapsed .panel-header .panel-summary { display: block; }
+.panel.collapsed .panel-header { flex-wrap: wrap; }
+.panel.collapsed .panel-header .panel-summary { display: block; order: 5; flex-basis: 100%; margin-top: -4px; }
 .panel-body { overflow: hidden; max-height: 800px; transition: max-height 0.25s ease; }
 .panel.collapsed .panel-body { max-height: 0; }
 
