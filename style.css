@@ -160,3 +160,31 @@ input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; background: v
 .preview-header .info-text { flex: 1; font-size: 11px; }
 .preview-container { background: #000; }
 .preview-container canvas { width: 100%; display: block; }
+
+/* ── Persistence toolbar ── */
+.persistence-toolbar { display: flex; gap: 6px; padding: 8px 0 4px; }
+.persistence-toolbar .btn { flex: 1; font-size: 12px; }
+
+/* ── Session restore banner ── */
+#restore-banner {
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 12px;
+    padding: 6px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+#restore-banner button {
+    margin-left: auto;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    cursor: pointer;
+}
+#restore-banner button:hover { color: var(--text); border-color: var(--text-dim); }

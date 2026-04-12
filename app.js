@@ -1,6 +1,7 @@
 import { CAMERA_PRESETS, PHONE_PRESETS } from './cameras.js';
 import { calibrate, ppfAtDistance, ppfRangeAtDistance, distanceAtPpf, fovBounds, PPF_ZONES } from './perspective.js';
 import { drawPhoto, renderOverlay, renderMiniMap, renderCameraPreview } from './renderer.js';
+import { saveSession, loadSession, exportProject, triggerDownload, parseImport } from './persistence.js';
 
 // ── State ──
 const state = {
@@ -30,6 +31,13 @@ const state = {
     panStartOffsetX: 0,
     panStartOffsetY: 0
 };
+
+// ── Auto-save ──
+let _saveTimer = null;
+function scheduleSave() {
+    clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(() => saveSession(state), 3000);
+}
 
 // ── DOM refs ──
 const $ = id => document.getElementById(id);
@@ -179,11 +187,71 @@ function updatePhoneFov() {
     phoneFovDisplay.textContent = `HFOV: ${state.phoneHFov}°`;
     render();
     updateStepWizard();
+    scheduleSave();
 }
 
 selPhone.addEventListener('change', () => { updateLensOptions(); });
 selLens.addEventListener('change', updatePhoneFov);
 inputCustomFov.addEventListener('input', updatePhoneFov);
+
+// ── Session restore ──
+function restoreSession(saved) {
+    state.photoRotation    = saved.photoRotation ?? 0;
+    state.phoneModel       = saved.phoneModel ?? state.phoneModel;
+    state.phoneZoom        = saved.phoneZoom  ?? state.phoneZoom;
+    state.phoneHFov        = saved.phoneHFov  ?? state.phoneHFov;
+    state.markers          = saved.markers    ?? [];
+    state.calibration      = saved.calibration ?? null;
+    state.cameraHeight     = saved.cameraHeight ?? 9;
+    state.cameraHeightUnit = saved.cameraHeightUnit ?? 'ft';
+    state.cameras          = saved.cameras    ?? [];
+    state.nextCameraId     = saved.nextCameraId ?? 1;
+    state.displayOptions   = { ...state.displayOptions, ...(saved.displayOptions ?? {}) };
+    state.viewport         = { ...state.viewport, ...(saved.viewport ?? {}) };
+
+    // Sync UI controls
+    selPhone.value = state.phoneModel;
+    $('input-cam-height').value = state.cameraHeightUnit === 'm'
+        ? (state.cameraHeight / 3.281).toFixed(1)
+        : state.cameraHeight;
+    $('sel-height-unit').value = state.cameraHeightUnit;
+    inputRotation.value = state.photoRotation;
+    rotationValue.textContent = `${state.photoRotation}°`;
+    $('opt-ppf').checked    = state.displayOptions.showPpf;
+    $('opt-fov').checked    = state.displayOptions.showFov;
+    $('opt-ruler').checked  = state.displayOptions.showRuler;
+    $('opt-minimap').checked = state.displayOptions.showMiniMap;
+
+    // Rebuild dynamic lists
+    recalibrate();
+    updateMarkerList();
+    updateCameraList();
+    updateStepWizard();
+
+    // Open panels based on restored data
+    if (state.markers.length > 0) expandPanelEl($('panel-calibration'));
+    if (state.cameras.length > 0) {
+        expandPanelEl($('panel-cameras'));
+        expandPanelEl($('panel-display'));
+        expandPanelEl($('panel-ppf-legend'));
+        expandPanelEl($('panel-minimap'));
+    }
+
+    showRestoreBanner();
+}
+
+function showRestoreBanner() {
+    const existing = document.getElementById('restore-banner');
+    if (existing) existing.remove();
+    const banner = document.createElement('div');
+    banner.id = 'restore-banner';
+    banner.innerHTML = 'Session restored — re-upload your photo to continue. <button id="btn-dismiss-banner">✕</button>';
+    document.querySelector('.app').insertBefore(banner, document.querySelector('.main'));
+    $('btn-dismiss-banner').addEventListener('click', () => banner.remove());
+}
+
+const _saved = loadSession();
+if (_saved) restoreSession(_saved);
 updateLensOptions();
 
 // ── Camera height ──
@@ -195,6 +263,7 @@ $('input-cam-height').addEventListener('input', () => {
         state.cameraHeightUnit = unit;
         recalibrate();
         render();
+        scheduleSave();
     }
 });
 $('sel-height-unit').addEventListener('change', () => {
@@ -205,6 +274,7 @@ $('sel-height-unit').addEventListener('change', () => {
         state.cameraHeightUnit = unit;
         recalibrate();
         render();
+        scheduleSave();
     }
 });
 
@@ -349,6 +419,7 @@ function fitCanvas() {
 
     applyViewTransform();
     render();
+    scheduleSave();
 }
 
 window.addEventListener('resize', fitCanvas);
@@ -1028,10 +1099,10 @@ $('btn-save-custom').addEventListener('click', () => {
 });
 
 // ── Display options ──
-$('opt-ppf').addEventListener('change', e => { state.displayOptions.showPpf = e.target.checked; render(); });
-$('opt-fov').addEventListener('change', e => { state.displayOptions.showFov = e.target.checked; render(); });
-$('opt-ruler').addEventListener('change', e => { state.displayOptions.showRuler = e.target.checked; render(); });
-$('opt-minimap').addEventListener('change', e => { state.displayOptions.showMiniMap = e.target.checked; render(); });
+$('opt-ppf').addEventListener('change', e => { state.displayOptions.showPpf = e.target.checked; render(); scheduleSave(); });
+$('opt-fov').addEventListener('change', e => { state.displayOptions.showFov = e.target.checked; render(); scheduleSave(); });
+$('opt-ruler').addEventListener('change', e => { state.displayOptions.showRuler = e.target.checked; render(); scheduleSave(); });
+$('opt-minimap').addEventListener('change', e => { state.displayOptions.showMiniMap = e.target.checked; render(); scheduleSave(); });
 
 // ── Comparison modal ──
 $('btn-compare').addEventListener('click', showComparisonModal);
@@ -1160,6 +1231,43 @@ $('btn-close-preview').addEventListener('click', () => {
 $('btn-help').addEventListener('click', () => $('modal-help').classList.remove('hidden'));
 $('btn-close-help').addEventListener('click', () => $('modal-help').classList.add('hidden'));
 $('modal-help').addEventListener('click', e => { if (e.target === $('modal-help')) $('modal-help').classList.add('hidden'); });
+
+// ── Export / Import ──
+$('btn-export').addEventListener('click', () => {
+    const json = exportProject(state);
+    triggerDownload(json, `fovcalc-${new Date().toISOString().slice(0, 10)}.json`);
+});
+
+$('btn-import').addEventListener('click', () => $('file-import').click());
+
+$('file-import').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = evt => {
+        try {
+            const { session, photoDataUrl } = parseImport(evt.target.result);
+            restoreSession(session);
+            updateLensOptions();
+            if (photoDataUrl) {
+                const img = new Image();
+                img.onload = () => {
+                    state.photo = img;
+                    uploadZone.classList.add('hidden');
+                    canvasContainer.style.display = '';
+                    fitCanvas();
+                    updateStepWizard();
+                    document.getElementById('restore-banner')?.remove();
+                };
+                img.src = photoDataUrl;
+            }
+        } catch (err) {
+            alert(`Import failed: ${err.message}`);
+        }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+});
 
 // ── Render ──
 function render() {
