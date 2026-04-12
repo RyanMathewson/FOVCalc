@@ -168,10 +168,10 @@ function collapsePanelEl(panel) {
     panel.classList.add('collapsed');
 }
 
-function expandPanelEl(panel) {
+function expandPanelEl(panel, scroll = true) {
     if (!panel || !panel.classList.contains('collapsed')) return;
     panel.classList.remove('collapsed');
-    setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+    if (scroll) setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
 }
 
 // Panel header click → toggle collapsed
@@ -287,13 +287,13 @@ function restoreSession(saved) {
     updateCameraList();
     updateStepWizard();
 
-    // Open panels based on restored data
-    if (state.markers.length > 0) expandPanelEl($('panel-calibration'));
+    // Open panels based on restored data (no scroll — page just loaded)
+    if (state.markers.length > 0) expandPanelEl($('panel-calibration'), false);
     if (state.cameras.length > 0) {
-        expandPanelEl($('panel-cameras'));
-        expandPanelEl($('panel-display'));
-        expandPanelEl($('panel-ppf-legend'));
-        expandPanelEl($('panel-minimap'));
+        expandPanelEl($('panel-cameras'), false);
+        expandPanelEl($('panel-display'), false);
+        expandPanelEl($('panel-ppf-legend'), false);
+        expandPanelEl($('panel-minimap'), false);
     }
 
     showRestoreBanner();
