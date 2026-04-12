@@ -32,6 +32,10 @@ const state = {
     panStartOffsetY: 0
 };
 
+// ── Undo/Redo history (data only — functions defined at end of file) ──
+const history = { stack: [], index: -1 };
+const HISTORY_LIMIT = 50;
+
 // ── Auto-save ──
 let _saveTimer = null;
 function scheduleSave() {
@@ -312,8 +316,11 @@ function showRestoreBanner() {
 const _saved = loadSession();
 if (_saved) restoreSession(_saved);
 updateLensOptions();
+pushHistory(); // initial snapshot
 
 // ── Camera height ──
+$('input-cam-height').addEventListener('focus', () => { pushHistory(); });
+$('sel-height-unit').addEventListener('focus', () => { pushHistory(); });
 $('input-cam-height').addEventListener('input', () => {
     const val = parseFloat($('input-cam-height').value);
     const unit = $('sel-height-unit').value;
@@ -338,6 +345,7 @@ $('sel-height-unit').addEventListener('change', () => {
 });
 
 // ── Photo rotation ──
+inputRotation.addEventListener('pointerdown', () => { pushHistory(); });
 inputRotation.addEventListener('input', () => {
     state.photoRotation = parseFloat(inputRotation.value) || 0;
     rotationValue.textContent = `${state.photoRotation}°`;
@@ -345,6 +353,7 @@ inputRotation.addEventListener('input', () => {
 });
 
 $('btn-reset-rotation').addEventListener('click', () => {
+    pushHistory();
     inputRotation.value = 0;
     state.photoRotation = 0;
     rotationValue.textContent = '0°';
@@ -655,6 +664,7 @@ overlayCanvas.addEventListener('click', e => {
         const dy = imgY - p.y1;
         if (Math.abs(dx) > 1) {
             const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            pushHistory();
             state.photoRotation = -angle;
             inputRotation.value = state.photoRotation;
             rotationValue.textContent = `${state.photoRotation.toFixed(1)}°`;
@@ -694,6 +704,7 @@ function confirmSingle() {
     const effectiveH = h + (elevFt || 0);
     const effDist = effectiveH > 0 ? dist * h / effectiveH : dist;
 
+    pushHistory();
     state.markers.push({
         y: state.pendingMarker.y,
         groundDistFt: Math.round(dist * 10) / 10,
@@ -731,6 +742,7 @@ function confirmBetween() {
     if (unit === 'm') elevFt *= 3.281;
     if ($('marker-elev-dir-between').value === 'up') elevFt = -elevFt;
 
+    pushHistory();
     state.markers.push({
         y1: state.pendingMarker.y1,
         y2: state.pendingMarker.y2,
@@ -848,6 +860,7 @@ function updateMarkerList() {
             <button title="Remove">&times;</button>
         `;
         div.querySelector('button').addEventListener('click', () => {
+            pushHistory();
             state.markers.splice(i, 1);
             recalibrate();
             updateMarkerList();
@@ -859,6 +872,7 @@ function updateMarkerList() {
 }
 
 $('btn-clear-markers').addEventListener('click', () => {
+    pushHistory();
     state.markers = [];
     recalibrate();
     updateMarkerList();
@@ -867,6 +881,7 @@ $('btn-clear-markers').addEventListener('click', () => {
 
 // ── Camera management ──
 function addCamera(preset) {
+    pushHistory();
     const cam = {
         ...preset,
         id: `cam-${state.nextCameraId++}`,
@@ -919,17 +934,20 @@ function updateCameraList() {
             ${specLine || specLinkHtml ? `<div class="camera-item-specs">${specLine}${specLinkHtml}</div>` : ''}
         `;
         div.querySelector('.cam-toggle').addEventListener('click', () => {
+            pushHistory();
             cam.visible = !cam.visible;
             updateCameraList();
             fitCanvas();
         });
         div.querySelector('.cam-reset-pan').addEventListener('click', () => {
+            pushHistory();
             cam.panOffset = 0;
             cam.tiltOffset = 0;
             updateCameraList();
             fitCanvas();
         });
         div.querySelector('.cam-delete').addEventListener('click', () => {
+            pushHistory();
             state.cameras.splice(i, 1);
             updateCameraList();
             fitCanvas();
@@ -987,6 +1005,7 @@ function handleFovDragStart(clientX, clientY) {
 
     if (bestCam) {
         const { canvasY: y } = screenToCanvas(clientX, clientY);
+        pushHistory();
         state.mode = 'dragging-cam';
         state.draggingCamera = bestCam;
         state.dragStartX = x;
@@ -1484,3 +1503,73 @@ function render() {
         }
     }
 }
+
+// ── Undo / Redo ──
+function captureSnapshot() {
+    return JSON.parse(JSON.stringify({
+        markers:          state.markers,
+        calibration:      state.calibration,
+        cameras:          state.cameras,
+        nextCameraId:     state.nextCameraId,
+        photoRotation:    state.photoRotation,
+        cameraHeight:     state.cameraHeight,
+        cameraHeightUnit: state.cameraHeightUnit,
+    }));
+}
+
+function pushHistory() {
+    history.stack = history.stack.slice(0, history.index + 1);
+    history.stack.push(captureSnapshot());
+    if (history.stack.length > HISTORY_LIMIT) {
+        history.stack.shift();
+    } else {
+        history.index++;
+    }
+}
+
+function applySnapshot(snap) {
+    state.markers          = snap.markers;
+    state.calibration      = snap.calibration;
+    state.cameras          = snap.cameras;
+    state.nextCameraId     = snap.nextCameraId;
+    state.photoRotation    = snap.photoRotation;
+    state.cameraHeight     = snap.cameraHeight;
+    state.cameraHeightUnit = snap.cameraHeightUnit;
+
+    inputRotation.value       = state.photoRotation;
+    rotationValue.textContent = `${state.photoRotation}°`;
+    $('input-cam-height').value = state.cameraHeightUnit === 'm'
+        ? (state.cameraHeight / 3.281).toFixed(1)
+        : state.cameraHeight;
+    $('sel-height-unit').value = state.cameraHeightUnit;
+
+    recalibrate();
+    updateMarkerList();
+    updateCameraList();
+    updateStepWizard();
+    fitCanvas();
+    scheduleSave();
+}
+
+function undo() {
+    if (state.mode === 'dragging-cam') endDrag();
+    if (history.index <= 0) return;
+    history.index--;
+    applySnapshot(history.stack[history.index]);
+}
+
+function redo() {
+    if (state.mode === 'dragging-cam') endDrag();
+    if (history.index >= history.stack.length - 1) return;
+    history.index++;
+    applySnapshot(history.stack[history.index]);
+}
+
+document.addEventListener('keydown', e => {
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    const isZ = e.key === 'z' || e.key === 'Z';
+    const isY = e.key === 'y' || e.key === 'Y';
+    if (e.ctrlKey && isZ && !e.shiftKey) { e.preventDefault(); undo(); }
+    else if (e.ctrlKey && (isY || (isZ && e.shiftKey))) { e.preventDefault(); redo(); }
+});
