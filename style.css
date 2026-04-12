@@ -49,14 +49,17 @@ header button:hover { background: var(--accent); border-color: var(--accent); }
 .btn-sm { padding: 4px 8px; font-size: 12px; width: auto; }
 
 /* Camera list */
-.camera-item { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; margin-bottom: 4px; cursor: pointer; }
+.camera-item { display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: 6px; margin-bottom: 4px; }
 .camera-item:hover { background: rgba(255,255,255,0.05); }
+.camera-item-row { display: flex; align-items: center; gap: 8px; }
 .camera-item .swatch { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
 .camera-item .cam-name { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .camera-item .cam-toggle { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 16px; padding: 2px; }
 .camera-item .cam-toggle.active { color: var(--green); }
 .camera-item .cam-delete { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 14px; padding: 2px; }
 .camera-item .cam-delete:hover { color: var(--red); }
+.camera-item-specs { font-size: 11px; color: var(--text-dim); padding-left: 20px; line-height: 1.5; }
+.camera-item-specs a { color: var(--text-dim); text-decoration: underline; }
 
 /* Marker list */
 .marker-item { display: flex; align-items: center; gap: 6px; padding: 4px 0; font-size: 13px; }

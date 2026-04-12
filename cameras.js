@@ -11,6 +11,7 @@ export const CAMERA_PRESETS = [
         sensorSize: '1/2.7"',
         color: '#3b82f6',
         notes: '8MP dual-lens, IR 30m',
+        specUrl: 'https://reolink.com/product/reolink-duo-poe/#specifications',
         // Dual-lens config: two lenses stitched into one panoramic output
         numLenses: 2,
         perLensHRes: 2304,  // 4608 / 2
@@ -28,6 +29,7 @@ export const CAMERA_PRESETS = [
         sensorSize: '1/2.7"',
         color: '#22c55e',
         notes: '16MP dual-lens, IR 30m',
+        specUrl: 'https://reolink.com/us/product/reolink-duo-3-poe/#specifications',
         numLenses: 2,
         perLensHRes: 3840,
         perLensHFov: 90
@@ -44,6 +46,7 @@ export const CAMERA_PRESETS = [
         sensorSize: '1/2.8"',
         color: '#f97316',
         notes: '16MP dual-lens, IR 30m',
+        specUrl: 'https://reolink.com/us/product/reolink-duo-3v-poe-d/#specifications',
         numLenses: 2,
         perLensHRes: 3840,
         perLensHFov: 90

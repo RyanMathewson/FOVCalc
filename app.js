@@ -727,14 +727,28 @@ function updateCameraList() {
             if (hasTilt) parts.push(`${cam.tiltOffset > 0 ? '+' : ''}${cam.tiltOffset.toFixed(0)}° V`);
             aimLabel = ` (${parts.join(', ')})`;
         }
+        const specParts = [];
+        if (cam.hRes && cam.vRes) specParts.push(`${cam.hRes}×${cam.vRes}`);
+        if (cam.hFov && cam.vFov) specParts.push(`${cam.hFov}°×${cam.vFov}° FOV`);
+        if (cam.focalLength) specParts.push(`${cam.focalLength}mm`);
+        if (cam.aperture) specParts.push(cam.aperture);
+        if (cam.sensorSize) specParts.push(cam.sensorSize);
+        const specLine = specParts.join(' · ');
+        const specLinkHtml = cam.specUrl
+            ? ` · <a href="${cam.specUrl}" target="_blank" rel="noopener noreferrer">Specs ↗</a>`
+            : '';
+
         div.innerHTML = `
-            <div class="swatch" style="background:${cam.color}"></div>
-            <span class="cam-name" title="${cam.name}">${cam.name}${aimLabel}</span>
-            <button class="cam-toggle ${cam.visible ? 'active' : ''}" title="Toggle visibility">
-                ${cam.visible ? '&#9673;' : '&#9675;'}
-            </button>
-            <button class="cam-reset-pan" title="Reset aim" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:12px;padding:2px;${hasAim ? '' : 'display:none'}">↺</button>
-            <button class="cam-delete" title="Remove">&times;</button>
+            <div class="camera-item-row">
+                <div class="swatch" style="background:${cam.color}"></div>
+                <span class="cam-name" title="${cam.name}">${cam.name}${aimLabel}</span>
+                <button class="cam-toggle ${cam.visible ? 'active' : ''}" title="Toggle visibility">
+                    ${cam.visible ? '&#9673;' : '&#9675;'}
+                </button>
+                <button class="cam-reset-pan" title="Reset aim" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:12px;padding:2px;${hasAim ? '' : 'display:none'}">↺</button>
+                <button class="cam-delete" title="Remove">&times;</button>
+            </div>
+            ${specLine || specLinkHtml ? `<div class="camera-item-specs">${specLine}${specLinkHtml}</div>` : ''}
         `;
         div.querySelector('.cam-toggle').addEventListener('click', () => {
             cam.visible = !cam.visible;
@@ -951,16 +965,32 @@ $('btn-add-preset').addEventListener('click', () => {
     const list = $('preset-list');
     list.innerHTML = '';
     CAMERA_PRESETS.forEach(p => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:4px';
+
         const btn = document.createElement('button');
         btn.className = 'btn btn-secondary btn-sm';
-        btn.style.marginBottom = '4px';
+        btn.style.flex = '1';
         btn.style.textAlign = 'left';
         btn.textContent = `${p.name} (${p.hRes}x${p.vRes}, ${p.hFov}°)`;
         btn.addEventListener('click', () => {
             addCamera(p);
             panel.style.display = 'none';
         });
-        list.appendChild(btn);
+        row.appendChild(btn);
+
+        if (p.specUrl) {
+            const link = document.createElement('a');
+            link.href = p.specUrl;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.textContent = 'Specs';
+            link.title = 'View manufacturer specifications';
+            link.style.cssText = 'font-size:11px;color:var(--text-dim);white-space:nowrap;text-decoration:underline';
+            row.appendChild(link);
+        }
+
+        list.appendChild(row);
     });
 });
 
@@ -1053,6 +1083,16 @@ function showComparisonModal() {
 
     html += '<tr><td>Sensor Size</td>';
     state.cameras.forEach(c => html += `<td>${c.sensorSize || '—'}</td>`);
+    html += '</tr>';
+
+    html += '<tr><td>Spec Sheet</td>';
+    state.cameras.forEach(c => {
+        if (c.specUrl) {
+            html += `<td><a href="${c.specUrl}" target="_blank" rel="noopener noreferrer" style="color:var(--text-dim);font-size:11px">View ↗</a></td>`;
+        } else {
+            html += '<td>—</td>';
+        }
+    });
     html += '</tr>';
 
     html += '<tr><td colspan="100%" style="font-weight:600;padding-top:12px">Pixels Per Foot (PPF) — per lens</td></tr>';
