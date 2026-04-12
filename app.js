@@ -54,6 +54,87 @@ const previewInfo = $('preview-info');
 const inputRotation = $('input-rotation');
 const rotationValue = $('rotation-value');
 
+// ── Step-wizard panel helpers ──
+
+function updateStepWizard() {
+    const photoReady = !!state.photo;
+    const calReady = !!state.calibration;
+
+    // Step 1 Next button
+    const btnNextPhoto = $('btn-next-photo');
+    if (btnNextPhoto) btnNextPhoto.disabled = !photoReady;
+
+    // Step 2 Next button
+    const btnNextCal = $('btn-next-calibration');
+    if (btnNextCal) btnNextCal.disabled = !calReady;
+
+    // Update summaries
+    if (photoReady) {
+        const phone = PHONE_PRESETS.find(p => p.id === selPhone.value);
+        const phoneName = phone ? phone.name.replace('Apple ', '') : selPhone.value;
+        $('summary-photo').textContent = `${phoneName} · ${selLens.value} · ${state.phoneHFov}° HFOV`;
+        $('panel-photo').classList.add('complete');
+    } else {
+        $('panel-photo').classList.remove('complete');
+    }
+
+    if (calReady) {
+        const pts = state.markers.length;
+        $('summary-calibration').textContent = `Calibrated · ${pts} reference point${pts !== 1 ? 's' : ''}`;
+        $('panel-calibration').classList.add('complete');
+    } else {
+        $('summary-calibration').textContent = '';
+        $('panel-calibration').classList.remove('complete');
+    }
+
+    const camCount = state.cameras.length;
+    if (camCount > 0) {
+        $('summary-cameras').textContent = `${camCount} camera${camCount !== 1 ? 's' : ''} added`;
+        $('panel-cameras').classList.add('complete');
+    } else {
+        $('summary-cameras').textContent = '';
+        $('panel-cameras').classList.remove('complete');
+    }
+}
+
+function collapsePanelEl(panel) {
+    if (!panel || panel.classList.contains('collapsed')) return;
+    panel.classList.add('collapsed');
+}
+
+function expandPanelEl(panel) {
+    if (!panel || !panel.classList.contains('collapsed')) return;
+    panel.classList.remove('collapsed');
+    setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+}
+
+// Panel header click → toggle collapsed
+document.querySelector('.sidebar').addEventListener('click', e => {
+    const header = e.target.closest('.panel-header');
+    if (!header) return;
+    if (e.target.closest('button')) return;
+    const panel = header.closest('.panel');
+    if (!panel || !panel.classList.contains('collapsible')) return;
+    if (panel.classList.contains('collapsed')) expandPanelEl(panel);
+    else collapsePanelEl(panel);
+});
+
+// "Next" button wiring (module scripts run after DOM is parsed)
+$('btn-next-photo').addEventListener('click', () => {
+    collapsePanelEl($('panel-photo'));
+    expandPanelEl($('panel-calibration'));
+});
+$('btn-next-calibration').addEventListener('click', () => {
+    collapsePanelEl($('panel-calibration'));
+    expandPanelEl($('panel-cameras'));
+    expandPanelEl($('panel-display'));
+    expandPanelEl($('panel-ppf-legend'));
+    expandPanelEl($('panel-minimap'));
+});
+$('btn-next-cameras').addEventListener('click', () => {
+    collapsePanelEl($('panel-cameras'));
+});
+
 // ── Init phone selectors ──
 PHONE_PRESETS.forEach(p => {
     const opt = document.createElement('option');
@@ -97,6 +178,7 @@ function updatePhoneFov() {
     }
     phoneFovDisplay.textContent = `HFOV: ${state.phoneHFov}°`;
     render();
+    updateStepWizard();
 }
 
 selPhone.addEventListener('change', () => { updateLensOptions(); });
@@ -161,6 +243,7 @@ function loadPhoto(file) {
             canvasContainer.style.display = '';
             fitCanvas();
             detectPhoneFromExif(file);
+            updateStepWizard();
         };
         img.src = e.target.result;
     };
@@ -576,6 +659,7 @@ function recalibrate() {
         calibrationStatus.textContent = 'Calibration failed — try different points';
         calibrationStatus.style.color = '#ef4444';
     }
+    updateStepWizard();
 }
 
 function updateMarkerList() {
@@ -625,6 +709,7 @@ function addCamera(preset) {
     state.cameras.push(cam);
     updateCameraList();
     fitCanvas(); // re-fit to potentially expand canvas for wider FOV
+    updateStepWizard();
 }
 
 function updateCameraList() {

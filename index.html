@@ -20,66 +20,90 @@
     <div class="main">
         <aside class="sidebar">
             <!-- Phone / Photo -->
-            <div class="panel" id="panel-photo">
-                <h3>1. Photo &amp; Phone</h3>
-                <button class="btn" id="btn-upload">Upload Photo</button>
-                <input type="file" id="file-input" accept="image/*" style="display:none">
-                <div class="form-row" style="margin-top:8px">
-                    <label>Phone Model</label>
-                    <select id="sel-phone"></select>
+            <div class="panel collapsible" id="panel-photo">
+                <div class="panel-header">
+                    <span class="step-check">✓</span>
+                    <h3>1. Photo &amp; Phone</h3>
+                    <span class="panel-summary" id="summary-photo"></span>
+                    <span class="chevron">▾</span>
                 </div>
-                <div class="form-row">
-                    <label>Zoom / Lens</label>
-                    <select id="sel-lens"></select>
-                </div>
-                <div class="form-row" id="custom-fov-row" style="display:none">
-                    <label>Custom HFOV (degrees)</label>
-                    <input type="number" id="input-custom-fov" value="75" min="10" max="180" step="0.1">
-                </div>
-                <p class="info-text" id="phone-fov-display">HFOV: —</p>
-                <div class="form-row" style="margin-top:8px">
-                    <label>Straighten Photo <span id="rotation-value">0°</span></label>
-                    <div style="display:flex;gap:6px;align-items:center">
-                        <input type="range" id="input-rotation" min="-30" max="30" step="0.5" value="0" style="flex:1">
-                        <button class="btn btn-secondary btn-sm" id="btn-pick-horizon" title="Click two points on the horizon to auto-straighten" style="white-space:nowrap">Pick Horizon</button>
+                <div class="panel-body">
+                    <button class="btn" id="btn-upload">Upload Photo</button>
+                    <input type="file" id="file-input" accept="image/*" style="display:none">
+                    <div class="form-row" style="margin-top:8px">
+                        <label>Phone Model</label>
+                        <select id="sel-phone"></select>
                     </div>
+                    <div class="form-row">
+                        <label>Zoom / Lens</label>
+                        <select id="sel-lens"></select>
+                    </div>
+                    <div class="form-row" id="custom-fov-row" style="display:none">
+                        <label>Custom HFOV (degrees)</label>
+                        <input type="number" id="input-custom-fov" value="75" min="10" max="180" step="0.1">
+                    </div>
+                    <p class="info-text" id="phone-fov-display">HFOV: —</p>
+                    <div class="form-row" style="margin-top:8px">
+                        <label>Straighten Photo <span id="rotation-value">0°</span></label>
+                        <div style="display:flex;gap:6px;align-items:center">
+                            <input type="range" id="input-rotation" min="-30" max="30" step="0.5" value="0" style="flex:1">
+                            <button class="btn btn-secondary btn-sm" id="btn-pick-horizon" title="Click two points on the horizon to auto-straighten" style="white-space:nowrap">Pick Horizon</button>
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" id="btn-reset-rotation" style="margin-top:2px">Reset Rotation</button>
+                    <button class="btn-next-step" id="btn-next-photo" disabled>Next: Calibrate Distance →</button>
                 </div>
-                <button class="btn btn-secondary btn-sm" id="btn-reset-rotation" style="margin-top:2px">Reset Rotation</button>
             </div>
 
             <!-- Calibration -->
-            <div class="panel" id="panel-calibration">
-                <h3>2. Calibrate Distance</h3>
-                <div class="form-row" style="margin-bottom:8px">
-                    <label>Camera Height</label>
-                    <div class="form-row-inline">
-                        <div class="form-row" style="flex:2"><input type="number" id="input-cam-height" min="0.1" step="0.5" value="9" placeholder="Height"></div>
-                        <div class="form-row" style="flex:1">
-                            <select id="sel-height-unit">
-                                <option value="ft">feet</option>
-                                <option value="m">meters</option>
-                            </select>
+            <div class="panel collapsible collapsed" id="panel-calibration">
+                <div class="panel-header">
+                    <span class="step-check">✓</span>
+                    <h3>2. Calibrate Distance</h3>
+                    <span class="panel-summary" id="summary-calibration"></span>
+                    <span class="chevron">▾</span>
+                </div>
+                <div class="panel-body">
+                    <div class="form-row" style="margin-bottom:8px">
+                        <label>Camera Height</label>
+                        <div class="form-row-inline">
+                            <div class="form-row" style="flex:2"><input type="number" id="input-cam-height" min="0.1" step="0.5" value="9" placeholder="Height"></div>
+                            <div class="form-row" style="flex:1">
+                                <select id="sel-height-unit">
+                                    <option value="ft">feet</option>
+                                    <option value="m">meters</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
+                    <p class="info-text" style="margin-bottom:8px">Click ground features at known distances. Need at least 2.</p>
+                    <div style="display:flex;gap:6px;margin-bottom:4px">
+                        <button class="btn btn-secondary btn-sm" id="btn-add-marker" style="flex:1">+ Ground Distance</button>
+                        <button class="btn btn-secondary btn-sm" id="btn-add-between" style="flex:1">+ Between Points</button>
+                    </div>
+                    <p class="info-text" style="font-size:11px;color:var(--text-dim)"><strong>Ground Distance:</strong> click a point, enter distance along ground from camera base.<br><strong>Between Points:</strong> click two points at <em>different distances</em> from camera (e.g., near &amp; far edge of sidewalk), enter the depth between them.</p>
+                    <div id="marker-list" style="margin-top:8px"></div>
+                    <button class="btn btn-secondary btn-sm" id="btn-clear-markers" style="margin-top:4px;display:none">Clear All Markers</button>
+                    <p class="info-text" id="calibration-status" style="margin-top:6px">Not calibrated</p>
+                    <button class="btn-next-step" id="btn-next-calibration" disabled>Next: Add Cameras →</button>
                 </div>
-                <p class="info-text" style="margin-bottom:8px">Click ground features at known distances. Need at least 2.</p>
-                <div style="display:flex;gap:6px;margin-bottom:4px">
-                    <button class="btn btn-secondary btn-sm" id="btn-add-marker" style="flex:1">+ Ground Distance</button>
-                    <button class="btn btn-secondary btn-sm" id="btn-add-between" style="flex:1">+ Between Points</button>
-                </div>
-                <p class="info-text" style="font-size:11px;color:var(--text-dim)"><strong>Ground Distance:</strong> click a point, enter distance along ground from camera base.<br><strong>Between Points:</strong> click two points at <em>different distances</em> from camera (e.g., near &amp; far edge of sidewalk), enter the depth between them.</p>
-                <div id="marker-list" style="margin-top:8px"></div>
-                <button class="btn btn-secondary btn-sm" id="btn-clear-markers" style="margin-top:4px;display:none">Clear All Markers</button>
-                <p class="info-text" id="calibration-status" style="margin-top:6px">Not calibrated</p>
             </div>
 
             <!-- Cameras -->
-            <div class="panel" id="panel-cameras">
-                <h3>3. Cameras</h3>
-                <div id="camera-list"></div>
-                <div style="display:flex;gap:6px;margin-top:8px">
-                    <button class="btn btn-sm" id="btn-add-preset">+ Add Preset</button>
-                    <button class="btn btn-sm btn-secondary" id="btn-add-custom">+ Custom</button>
+            <div class="panel collapsible collapsed" id="panel-cameras">
+                <div class="panel-header">
+                    <span class="step-check">✓</span>
+                    <h3>3. Cameras</h3>
+                    <span class="panel-summary" id="summary-cameras"></span>
+                    <span class="chevron">▾</span>
+                </div>
+                <div class="panel-body">
+                    <div id="camera-list"></div>
+                    <div style="display:flex;gap:6px;margin-top:8px">
+                        <button class="btn btn-sm" id="btn-add-preset">+ Add Preset</button>
+                        <button class="btn btn-sm btn-secondary" id="btn-add-custom">+ Custom</button>
+                    </div>
+                    <button class="btn-next-step" id="btn-next-cameras">Next: View Results →</button>
                 </div>
             </div>
 
@@ -116,29 +140,47 @@
             </div>
 
             <!-- Display options -->
-            <div class="panel">
-                <h3>Display</h3>
-                <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:4px"><input type="checkbox" id="opt-ppf" checked> PPF Zones</label>
-                <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:4px"><input type="checkbox" id="opt-fov" checked> FOV Bounds</label>
-                <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:4px"><input type="checkbox" id="opt-ruler" checked> Distance Ruler</label>
-                <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:4px"><input type="checkbox" id="opt-minimap" checked> Mini-Map</label>
+            <div class="panel collapsible collapsed" id="panel-display">
+                <div class="panel-header">
+                    <h3>Display</h3>
+                    <span class="chevron">▾</span>
+                </div>
+                <div class="panel-body">
+                    <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:4px"><input type="checkbox" id="opt-ppf" checked> PPF Zones</label>
+                    <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:4px"><input type="checkbox" id="opt-fov" checked> FOV Bounds</label>
+                    <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:4px"><input type="checkbox" id="opt-ruler" checked> Distance Ruler</label>
+                    <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:4px"><input type="checkbox" id="opt-minimap" checked> Mini-Map</label>
+                    <div style="height:4px"></div>
+                </div>
             </div>
 
             <!-- PPF Legend -->
-            <div class="panel">
-                <h3>PPF Legend</h3>
-                <div class="legend">
-                    <div class="legend-item"><div class="legend-swatch" style="background:rgba(34,197,94,0.5)"></div> ≥40 PPF — Identification</div>
-                    <div class="legend-item"><div class="legend-swatch" style="background:rgba(234,179,8,0.5)"></div> 20–40 PPF — Recognition</div>
-                    <div class="legend-item"><div class="legend-swatch" style="background:rgba(249,115,22,0.5)"></div> 10–20 PPF — Detection</div>
-                    <div class="legend-item"><div class="legend-swatch" style="background:rgba(100,100,100,0.5)"></div> <10 PPF — Below useful</div>
+            <div class="panel collapsible collapsed" id="panel-ppf-legend">
+                <div class="panel-header">
+                    <h3>PPF Legend</h3>
+                    <span class="chevron">▾</span>
+                </div>
+                <div class="panel-body">
+                    <div class="legend">
+                        <div class="legend-item"><div class="legend-swatch" style="background:rgba(34,197,94,0.5)"></div> ≥40 PPF — Identification</div>
+                        <div class="legend-item"><div class="legend-swatch" style="background:rgba(234,179,8,0.5)"></div> 20–40 PPF — Recognition</div>
+                        <div class="legend-item"><div class="legend-swatch" style="background:rgba(249,115,22,0.5)"></div> 10–20 PPF — Detection</div>
+                        <div class="legend-item"><div class="legend-swatch" style="background:rgba(100,100,100,0.5)"></div> <10 PPF — Below useful</div>
+                    </div>
+                    <div style="height:4px"></div>
                 </div>
             </div>
 
             <!-- Mini-map -->
-            <div class="panel minimap-container" id="panel-minimap">
-                <h3>Top-Down View</h3>
-                <canvas id="minimap-canvas" width="280" height="200"></canvas>
+            <div class="panel collapsible collapsed minimap-container" id="panel-minimap">
+                <div class="panel-header">
+                    <h3>Top-Down View</h3>
+                    <span class="chevron">▾</span>
+                </div>
+                <div class="panel-body">
+                    <canvas id="minimap-canvas" width="280" height="200"></canvas>
+                    <div style="height:4px"></div>
+                </div>
             </div>
 
         </aside>
