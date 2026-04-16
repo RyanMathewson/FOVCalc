@@ -333,15 +333,15 @@ $('input-cam-height').addEventListener('input', () => {
     }
 });
 $('sel-height-unit').addEventListener('change', () => {
-    const val = parseFloat($('input-cam-height').value);
     const unit = $('sel-height-unit').value;
-    if (val > 0) {
-        state.cameraHeight = unit === 'm' ? val * 3.281 : val;
-        state.cameraHeightUnit = unit;
-        recalibrate();
-        render();
-        scheduleSave();
-    }
+    state.cameraHeightUnit = unit;
+    // Convert the displayed value to the new unit — state.cameraHeight (feet) is unchanged
+    $('input-cam-height').value = unit === 'm'
+        ? (state.cameraHeight / 3.281).toFixed(2)
+        : state.cameraHeight;
+    updateMarkerList();
+    render();
+    scheduleSave();
 });
 
 // ── Photo rotation ──
@@ -604,6 +604,7 @@ overlayCanvas.addEventListener('click', e => {
 
         $('modal-marker-single').classList.remove('hidden');
         $('marker-dist-single').value = '';
+        $('marker-unit-single').value = state.cameraHeightUnit;
         $('marker-dist-single').focus();
         return;
     }
@@ -644,6 +645,7 @@ overlayCanvas.addEventListener('click', e => {
 
         $('modal-marker-between').classList.remove('hidden');
         $('marker-dist-between').value = '';
+        $('marker-unit-between').value = state.cameraHeightUnit;
         $('marker-dist-between').focus();
         return;
     }
@@ -842,18 +844,27 @@ function recalibrate() {
     updateStepWizard();
 }
 
+function fmtDist(ft, unit) {
+    if (unit === 'm') {
+        const m = ft / 3.281;
+        return m < 10 ? `${m.toFixed(1)} m` : `${Math.round(m)} m`;
+    }
+    return `${ft} ft`;
+}
+
 function updateMarkerList() {
     markerList.innerHTML = '';
+    const unit = state.cameraHeightUnit;
     state.markers.forEach((m, i) => {
         const div = document.createElement('div');
         div.className = 'marker-item';
         let label;
         if (m.type === 'between') {
-            label = `↕ ${m.distBetween} ft between`;
-            if (m.elevChangeFt) label += ` (${Math.abs(m.elevChangeFt)}' ${m.elevChangeFt > 0 ? 'drop' : 'rise'})`;
+            label = `↕ ${fmtDist(m.distBetween, unit)} between`;
+            if (m.elevChangeFt) label += ` (${fmtDist(Math.abs(m.elevChangeFt), unit)} ${m.elevChangeFt > 0 ? 'drop' : 'rise'})`;
         } else {
-            label = `${m.groundDistFt} ft ground dist`;
-            if (m.elevChangeFt) label += ` (${Math.abs(m.elevChangeFt)}' ${m.elevChangeFt > 0 ? 'drop' : 'rise'})`;
+            label = `${fmtDist(m.groundDistFt, unit)} ground dist`;
+            if (m.elevChangeFt) label += ` (${fmtDist(Math.abs(m.elevChangeFt), unit)} ${m.elevChangeFt > 0 ? 'drop' : 'rise'})`;
         }
         div.innerHTML = `
             <span class="marker-dist">${label}</span>
@@ -1328,8 +1339,12 @@ $('modal-compare').addEventListener('click', e => { if (e.target === $('modal-co
 function showComparisonModal() {
     if (state.cameras.length === 0) return;
     const container = $('compare-table-container');
+    const unit = state.cameraHeightUnit;
 
-    const distances = [10, 25, 50, 75, 100, 150, 200];
+    // Distances for the PPF table — defined in display units, stored as {display, ft}
+    const distances = unit === 'm'
+        ? [3, 5, 10, 15, 20, 30, 50].map(m => ({ display: `${m} m`, ft: m * 3.281 }))
+        : [10, 25, 50, 75, 100, 150, 200].map(d => ({ display: `${d} ft`, ft: d }));
 
     let html = '<table><thead><tr><th>Metric</th>';
     state.cameras.forEach(c => {
@@ -1383,11 +1398,11 @@ function showComparisonModal() {
     html += '</tr>';
 
     html += '<tr><td colspan="100%" style="font-weight:600;padding-top:12px">Pixels Per Foot (PPF) — per lens</td></tr>';
-    distances.forEach(d => {
-        html += `<tr><td>@ ${d} ft</td>`;
+    distances.forEach(({ display, ft }) => {
+        html += `<tr><td>@ ${display}</td>`;
         state.cameras.forEach(c => {
-            const range = ppfRangeAtDistance(c, d);
-            const ppf = ppfAtDistance(c, d);
+            const range = ppfRangeAtDistance(c, ft);
+            const ppf = ppfAtDistance(c, ft);
             let cls = 'ppf-none';
             if (ppf >= 40) cls = 'ppf-id';
             else if (ppf >= 20) cls = 'ppf-rec';
@@ -1406,7 +1421,7 @@ function showComparisonModal() {
         html += `<tr><td>${zone.label} (${zone.ppf} PPF)</td>`;
         state.cameras.forEach(c => {
             const d = distanceAtPpf(c, zone.ppf);
-            html += `<td>${Math.round(d)} ft</td>`;
+            html += `<td>${fmtDist(Math.round(d), unit)}</td>`;
         });
         html += '</tr>';
     });

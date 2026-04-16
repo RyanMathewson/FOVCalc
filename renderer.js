@@ -1,5 +1,13 @@
 import { distanceAtRow, rowAtDistance, ppfAtDistance, distanceAtPpf, PPF_ZONES, fovBounds, vFovBounds } from './perspective.js';
 
+function fmtDist(ft, unit) {
+    if (unit === 'm') {
+        const m = ft / 3.281;
+        return m < 10 ? `${m.toFixed(1)} m` : `${Math.round(m)} m`;
+    }
+    return `${ft} ft`;
+}
+
 /**
  * Draw the photo on the background canvas, scaled to fit.
  * If cameras have wider FOV than the phone, expand the canvas to show the full FOV.
@@ -68,7 +76,8 @@ export function drawPhoto(bgCanvas, image, containerW, containerH, cameras, phon
  * Main overlay render function.
  */
 export function renderOverlay(overlayCanvas, state) {
-    const { photoLayout, calibration, cameras, phoneHFov, displayOptions, photoRotation } = state;
+    const { photoLayout, calibration, cameras, phoneHFov, displayOptions, photoRotation, cameraHeightUnit } = state;
+    const unit = cameraHeightUnit || 'ft';
     if (!photoLayout) return;
 
     const { scale, width, height, photoW, photoH, photoOffsetX, photoOffsetY, renderScale: rs } = photoLayout;
@@ -88,7 +97,7 @@ export function renderOverlay(overlayCanvas, state) {
     const activeCameras = cameras.filter(c => c.visible);
 
     // Draw calibration markers
-    drawCalibrationMarkers(ctx, state.markers, scale, width, height, calibration, photoOffsetX, photoW, rotRad, phoneHFov, oY);
+    drawCalibrationMarkers(ctx, state.markers, scale, width, height, calibration, photoOffsetX, photoW, rotRad, phoneHFov, oY, unit);
 
     // Draw pending between-marker first point
     if (state.pendingMarker && state.pendingMarker.y1 !== undefined && state.mode === 'placing-between-2') {
@@ -118,13 +127,13 @@ export function renderOverlay(overlayCanvas, state) {
 
     if (calibration && activeCameras.length > 0) {
         if (displayOptions.showPpf) {
-            drawPpfZones(ctx, activeCameras, calibration, scale, width, height, phoneHFov, photoOffsetX, photoW, rotRad, oY, displayOptions.showPpfLabels ?? true);
+            drawPpfZones(ctx, activeCameras, calibration, scale, width, height, phoneHFov, photoOffsetX, photoW, rotRad, oY, displayOptions.showPpfLabels ?? true, unit);
         }
         if (displayOptions.showFov) {
             drawFovBounds(ctx, activeCameras, phoneHFov, width, height, photoOffsetX, photoW, photoH || height, rotRad, oY);
         }
         if (displayOptions.showRuler) {
-            drawDistanceRuler(ctx, calibration, scale, width, height, photoOffsetX, photoW, rotRad, phoneHFov, oY);
+            drawDistanceRuler(ctx, calibration, scale, width, height, photoOffsetX, photoW, rotRad, phoneHFov, oY, unit);
         }
     }
 
@@ -138,7 +147,7 @@ export function renderOverlay(overlayCanvas, state) {
     }
 }
 
-function drawCalibrationMarkers(ctx, markers, scale, canvasW, canvasH, calibration, photoOffsetX, photoW, rotRad, phoneHFov, oY) {
+function drawCalibrationMarkers(ctx, markers, scale, canvasW, canvasH, calibration, photoOffsetX, photoW, rotRad, phoneHFov, oY, unit = 'ft') {
     const lineLeft = photoOffsetX;
     const lineRight = photoOffsetX + photoW;
     const cx = canvasW / 2;
@@ -154,8 +163,8 @@ function drawCalibrationMarkers(ctx, markers, scale, canvasW, canvasH, calibrati
                 strokeDistanceCurve(ctx, pts, canvasW, canvasH, rotRad, 'rgba(255,255,255,0.6)', 1.5, [6, 4]);
 
                 const edgePt = curveEdgePoint(curveDist, calibration, phoneHFov, photoW, photoOffsetX, scale, canvasH, oY);
-                let label = `${marker.groundDistFt} ft`;
-                if (marker.elevChangeFt) label += ` (${marker.elevChangeFt > 0 ? '↓' : '↑'}${Math.abs(marker.elevChangeFt)}')`;
+                let label = fmtDist(marker.groundDistFt, unit);
+                if (marker.elevChangeFt) label += ` (${marker.elevChangeFt > 0 ? '↓' : '↑'}${fmtDist(Math.abs(marker.elevChangeFt), unit)})`;
                 if (edgePt.y >= canvasH - 1) {
                     drawRotatedLabel(ctx, label, edgePt.x + 4, edgePt.y - 18, cx, cy, rotRad);
                 } else {
@@ -163,8 +172,8 @@ function drawCalibrationMarkers(ctx, markers, scale, canvasW, canvasH, calibrati
                 }
             } else {
                 drawRotatedHLine(ctx, lineLeft, lineRight, y, canvasW, canvasH, rotRad, 'rgba(255,255,255,0.6)', 1.5, [6, 4]);
-                let label = `${marker.groundDistFt} ft`;
-                if (marker.elevChangeFt) label += ` (${marker.elevChangeFt > 0 ? '↓' : '↑'}${Math.abs(marker.elevChangeFt)}')`;
+                let label = fmtDist(marker.groundDistFt, unit);
+                if (marker.elevChangeFt) label += ` (${marker.elevChangeFt > 0 ? '↓' : '↑'}${fmtDist(Math.abs(marker.elevChangeFt), unit)})`;
                 drawRotatedLabel(ctx, label, lineLeft + 12, y - 5, cx, cy, rotRad);
             }
         } else if (marker.type === 'between') {
@@ -206,7 +215,7 @@ function drawCalibrationMarkers(ctx, markers, scale, canvasW, canvasH, calibrati
 
                     const midX = (edge1.x + edge2.x) / 2 + 20;
                     const midY = (edge1.y + edge2.y) / 2;
-                    drawRotatedLabel(ctx, `↕ ${marker.distBetween} ft`, midX, midY + 5, cx, cy, rotRad);
+                    drawRotatedLabel(ctx, `↕ ${fmtDist(marker.distBetween, unit)}`, midX, midY + 5, cx, cy, rotRad);
                 }
             } else {
                 for (const y of [y1, y2]) {
@@ -229,7 +238,7 @@ function drawCalibrationMarkers(ctx, markers, scale, canvasW, canvasH, calibrati
                 ctx.restore();
 
                 const midY = (y1 + y2) / 2;
-                drawRotatedLabel(ctx, `↕ ${marker.distBetween} ft`, lineLeft + 28, midY + 5, cx, cy, rotRad);
+                drawRotatedLabel(ctx, `↕ ${fmtDist(marker.distBetween, unit)}`, lineLeft + 28, midY + 5, cx, cy, rotRad);
             }
         }
     }
@@ -412,7 +421,7 @@ function drawRotatedLabel(ctx, text, x, y, cx, cy, rotRad) {
     ctx.restore();
 }
 
-function drawPpfZones(ctx, cameras, calibration, scale, canvasW, canvasH, phoneHFov, photoOffsetX, photoW, rotRad, oY, showLabels) {
+function drawPpfZones(ctx, cameras, calibration, scale, canvasW, canvasH, phoneHFov, photoOffsetX, photoW, rotRad, oY, showLabels, unit = 'ft') {
     const numCameras = cameras.length;
 
     for (let ci = 0; ci < cameras.length; ci++) {
@@ -470,7 +479,7 @@ function drawPpfZones(ctx, cameras, calibration, scale, canvasW, canvasH, phoneH
 
             // Label — position where curve meets left/bottom edge
             if (showLabels) {
-                const labelText = `${cam.name}: ${zone.label} (${zone.ppf} PPF) — ${Math.round(zone.distance)} ft`;
+                const labelText = `${cam.name}: ${zone.label} (${zone.ppf} PPF) — ${fmtDist(Math.round(zone.distance), unit)}`;
                 const edgePt = curveEdgePoint(zone.distance, calibration, phoneHFov, photoW, photoOffsetX, scale, canvasH, oY);
                 let labelX, labelY;
                 if (edgePt.y >= canvasH - 1) {
@@ -605,7 +614,7 @@ function drawFovBounds(ctx, cameras, phoneHFov, canvasW, canvasH, photoOffsetX, 
     }
 }
 
-function drawDistanceRuler(ctx, calibration, scale, canvasW, canvasH, photoOffsetX, photoW, rotRad, phoneHFov, oY) {
+function drawDistanceRuler(ctx, calibration, scale, canvasW, canvasH, photoOffsetX, photoW, rotRad, phoneHFov, oY, unit = 'ft') {
     // Compute visible distance range based on the photo area (not full canvas)
     const photoTopImgY = 0; // top of photo in image coords
     const photoBottomImgY = (canvasH - oY) / scale; // could extend beyond photo
@@ -614,32 +623,51 @@ function drawDistanceRuler(ctx, calibration, scale, canvasW, canvasH, photoOffse
 
     if (!isFinite(topDist) && !isFinite(bottomDist)) return;
 
-    const minDist = isFinite(bottomDist) && bottomDist > 0 ? Math.max(2, Math.floor(bottomDist / 5) * 5) : 2;
-    const maxDist = isFinite(topDist) ? Math.min(500, topDist) : 500;
-
-    const range = maxDist - minDist;
-    let interval = 10;
-    if (range > 200) interval = 50;
-    else if (range > 100) interval = 25;
-    else if (range < 30) interval = 5;
-
     const lineLeft = photoOffsetX;
     const lineRight = photoOffsetX + photoW;
     const cx = canvasW / 2, cy = canvasH / 2;
 
-    for (let d = Math.ceil(minDist / interval) * interval; d <= maxDist; d += interval) {
-        const row = rowAtDistance(d, calibration);
+    // Build list of tick distances (in feet for row calculations) and display labels
+    const ticks = []; // { distFt, label }
+
+    if (unit === 'm') {
+        const minM = isFinite(bottomDist) && bottomDist > 0 ? Math.max(1, Math.floor((bottomDist / 3.281) / 1) * 1) : 1;
+        const maxM = isFinite(topDist) ? Math.min(150, topDist / 3.281) : 150;
+        const rangeM = maxM - minM;
+        let intervalM = 5;
+        if (rangeM > 60) intervalM = 20;
+        else if (rangeM > 30) intervalM = 10;
+        else if (rangeM < 10) intervalM = 2;
+        for (let dm = Math.ceil(minM / intervalM) * intervalM; dm <= maxM; dm += intervalM) {
+            ticks.push({ distFt: dm * 3.281, label: `${dm} m` });
+        }
+    } else {
+        const minDist = isFinite(bottomDist) && bottomDist > 0 ? Math.max(2, Math.floor(bottomDist / 5) * 5) : 2;
+        const maxDist = isFinite(topDist) ? Math.min(500, topDist) : 500;
+        const range = maxDist - minDist;
+        let interval = 10;
+        if (range > 200) interval = 50;
+        else if (range > 100) interval = 25;
+        else if (range < 30) interval = 5;
+        for (let d = Math.ceil(minDist / interval) * interval; d <= maxDist; d += interval) {
+            ticks.push({ distFt: d, label: `${d}'` });
+        }
+    }
+
+    for (const { distFt, label } of ticks) {
+        const row = rowAtDistance(distFt, calibration);
         if (row === null) continue;
         const y = row * scale + oY;
         if (y < 10 || y > canvasH - 5) continue;
 
         // Draw faint distance curve across the full photo width
         if (phoneHFov) {
-            const pts = distanceCurvePoints(d, lineLeft, lineRight, calibration, phoneHFov, photoW, photoOffsetX, scale, oY);
+            const pts = distanceCurvePoints(distFt, lineLeft, lineRight, calibration, phoneHFov, photoW, photoOffsetX, scale, oY);
             strokeDistanceCurve(ctx, pts, canvasW, canvasH, rotRad, 'rgba(255,255,255,0.12)', 0.5, [4, 8]);
         }
 
         // Label on the right edge
+        const labelW = label.length * 6 + 4;
         ctx.save();
         ctx.translate(cx, cy);
         ctx.rotate(rotRad);
@@ -647,9 +675,9 @@ function drawDistanceRuler(ctx, calibration, scale, canvasW, canvasH, photoOffse
         ctx.font = '10px -apple-system, sans-serif';
         ctx.textAlign = 'left';
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.fillRect(lineRight + 4, y - 7, 32, 15);
+        ctx.fillRect(lineRight + 4, y - 7, labelW, 15);
         ctx.fillStyle = 'rgba(255,255,255,0.8)';
-        ctx.fillText(`${d}'`, lineRight + 6, y + 4);
+        ctx.fillText(label, lineRight + 6, y + 4);
         ctx.restore();
     }
 }
@@ -658,8 +686,9 @@ function drawDistanceRuler(ctx, calibration, scale, canvasW, canvasH, photoOffse
  * Render the top-down mini-map.
  */
 export function renderMiniMap(canvas, state) {
-    const { calibration, cameras, phoneHFov, displayOptions } = state;
+    const { calibration, cameras, phoneHFov, displayOptions, cameraHeightUnit } = state;
     if (!displayOptions.showMiniMap) return;
+    const unit = cameraHeightUnit || 'ft';
 
     const ctx = canvas.getContext('2d');
     const W = canvas.width;
@@ -680,20 +709,27 @@ export function renderMiniMap(canvas, state) {
     }
     const pxPerFt = maxRadius / maxDist;
 
-    // Grid rings
-    const ringIntervals = [25, 50, 100, 200];
+    // Grid rings — use nice intervals in the display unit
+    const ringIntervalsFt = unit === 'm'
+        ? [8, 15, 30, 60].map(m => m * 3.281)   // ~25/50/100/200 ft equivalents
+        : [25, 50, 100, 200];
+    const ringLabelsFt = unit === 'm'
+        ? [8, 15, 30, 60]
+        : [25, 50, 100, 200];
     ctx.font = '9px -apple-system, sans-serif';
     ctx.textAlign = 'center';
-    for (const dist of ringIntervals) {
-        if (dist > maxDist) continue;
-        const r = dist * pxPerFt;
+    for (let i = 0; i < ringIntervalsFt.length; i++) {
+        const distFt = ringIntervalsFt[i];
+        const displayVal = ringLabelsFt[i];
+        if (distFt > maxDist) continue;
+        const r = distFt * pxPerFt;
         ctx.beginPath();
         ctx.arc(cx, cy, r, Math.PI, 2 * Math.PI);
         ctx.strokeStyle = 'rgba(255,255,255,0.15)';
         ctx.lineWidth = 0.5;
         ctx.stroke();
         ctx.fillStyle = 'rgba(255,255,255,0.3)';
-        ctx.fillText(`${dist}'`, cx, cy - r - 2);
+        ctx.fillText(unit === 'm' ? `${displayVal} m` : `${displayVal}'`, cx, cy - r - 2);
     }
 
     // Phone FOV wedge
