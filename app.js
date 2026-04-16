@@ -1342,6 +1342,9 @@ $('opt-minimap').addEventListener('change', e => { state.displayOptions.showMini
 $('btn-compare').addEventListener('click', showComparisonModal);
 $('btn-close-compare').addEventListener('click', () => $('modal-compare').classList.add('hidden'));
 $('modal-compare').addEventListener('click', e => { if (e.target === $('modal-compare')) $('modal-compare').classList.add('hidden'); });
+$('btn-copy-csv').addEventListener('click', copyComparisonCSV);
+$('btn-download-csv').addEventListener('click', downloadComparisonCSV);
+$('btn-copy-tsv').addEventListener('click', copyComparisonTSV);
 
 function showComparisonModal() {
     if (state.cameras.length === 0) return;
@@ -1449,6 +1452,96 @@ function showComparisonModal() {
     html += '</tbody></table>';
     container.innerHTML = html;
     $('modal-compare').classList.remove('hidden');
+}
+
+function buildComparisonCSV() {
+    const unit = state.cameraHeightUnit;
+    const distances = unit === 'm'
+        ? [3, 5, 10, 15, 20, 30, 50].map(m => ({ display: `${m} m`, ft: m * 3.281 }))
+        : [10, 25, 50, 75, 100, 150, 200].map(d => ({ display: `${d} ft`, ft: d }));
+
+    const esc = v => `"${String(v).replace(/"/g, '""')}"`;
+    const row = cells => cells.map(esc).join(',');
+
+    const rows = [];
+    rows.push(row(['Metric', ...state.cameras.map(c => c.name)]));
+    rows.push(row(['Resolution', ...state.cameras.map(c => `${c.hRes} x ${c.vRes}`)]));
+    rows.push(row(['Megapixels', ...state.cameras.map(c => `${((c.hRes * c.vRes) / 1e6).toFixed(1)} MP`)]));
+    rows.push(row(['Lens Config', ...state.cameras.map(c =>
+        (c.numLenses && c.numLenses > 1) ? `${c.numLenses} lenses, ${c.perLensHRes}x${c.vRes} each, ${c.perLensHFov}° per lens` : 'Single lens'
+    )]));
+    rows.push(row(['HFOV / VFOV', ...state.cameras.map(c => `${c.hFov}° / ${c.vFov}°`)]));
+    rows.push(row(['Focal Length', ...state.cameras.map(c => c.focalLength ? `${c.focalLength}mm` : '')]));
+    rows.push(row(['Aperture', ...state.cameras.map(c => c.aperture || '')]));
+    rows.push(row(['Sensor Size', ...state.cameras.map(c => c.sensorSize || '')]));
+    rows.push(row(['Spec Sheet URL', ...state.cameras.map(c => c.specUrl || '')]));
+
+    rows.push(row([`PPF @ distance (per lens)`]));
+    distances.forEach(({ display, ft }) => {
+        rows.push(row([`@ ${display}`, ...state.cameras.map(c => {
+            if (c.numLenses && c.numLenses > 1) {
+                const range = ppfRangeAtDistance(c, ft);
+                return `${range.min.toFixed(1)}-${range.max.toFixed(1)}`;
+            }
+            return ppfAtDistance(c, ft).toFixed(1);
+        })]));
+    });
+
+    rows.push(row(['Effective Ranges']));
+    PPF_ZONES.forEach(zone => {
+        rows.push(row([`${zone.label} (${zone.ppf} PPF)`, ...state.cameras.map(c =>
+            fmtDist(Math.round(distanceAtPpf(c, zone.ppf)), unit)
+        )]));
+    });
+
+    rows.push(row(['Photo Coverage', ...state.cameras.map(c => {
+        const bounds = fovBounds(c.hFov, state.phoneHFov, 100);
+        if (bounds.type === 'wider') return `Photo shows ${bounds.coveragePct.toFixed(0)}% of view`;
+        if (bounds.type === 'narrower') return `Uses ${bounds.coveragePct.toFixed(0)}% of photo`;
+        return 'Matches photo';
+    })]));
+
+    return rows.join('\r\n');
+}
+
+function copyComparisonTSV() {
+    // Re-use CSV rows but swap delimiter to tab (no quoting needed for Excel paste)
+    const csv = buildComparisonCSV();
+    const tsv = csv
+        .split('\r\n')
+        .map(line => line.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)
+            .map(cell => cell.replace(/^"|"$/g, '').replace(/""/g, '"'))
+            .join('\t'))
+        .join('\r\n');
+    navigator.clipboard.writeText(tsv).then(() => {
+        const btn = $('btn-copy-tsv');
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1800);
+    });
+}
+
+function copyComparisonCSV() {
+    const csv = buildComparisonCSV();
+    navigator.clipboard.writeText(csv).then(() => {
+        const btn = $('btn-copy-csv');
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1800);
+    });
+}
+
+function downloadComparisonCSV() {
+    const csv = buildComparisonCSV();
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'camera-comparison.csv';
+    a.click();
+    URL.revokeObjectURL(url);
 }
 
 // ── Camera Preview toggle ──

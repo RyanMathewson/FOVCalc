@@ -101,6 +101,10 @@ header button:hover { background: var(--accent); border-color: var(--accent); }
 .modal .ppf-none { color: var(--red); }
 .modal .close-btn { float: right; background: none; border: none; color: var(--text-dim); font-size: 20px; cursor: pointer; }
 .modal .close-btn:hover { color: var(--text); }
+.compare-actions { display: flex; gap: 8px; margin-bottom: 14px; }
+.compare-actions button { font-size: 12px; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); cursor: pointer; }
+.compare-actions button:hover { background: var(--border); }
+.compare-actions button.copied { color: var(--green); border-color: var(--green); }
 
 /* Canvas rotation */
 .canvas-container.rotated { overflow: visible; }
