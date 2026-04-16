@@ -101,17 +101,54 @@ export function renderOverlay(overlayCanvas, state) {
 
     // Draw pending between-marker first point
     if (state.pendingMarker && state.pendingMarker.y1 !== undefined && state.mode === 'placing-between-2') {
-        const y = state.pendingMarker.y1 * scale + oY;
-        drawRotatedHLine(ctx, photoOffsetX, photoOffsetX + photoW, y, width, height, rotRad, 'rgba(59, 130, 246, 0.8)', 2, [3, 3]);
+        const px = state.pendingMarker.x1 * scale + photoOffsetX;
+        const py = state.pendingMarker.y1 * scale + oY;
+        drawRotatedHLine(ctx, photoOffsetX, photoOffsetX + photoW, py, width, height, rotRad, 'rgba(59, 130, 246, 0.5)', 1.5, [3, 3]);
 
+        const cx2 = width / 2, cy2 = height / 2;
+        ctx.save();
+        ctx.translate(cx2, cy2);
+        ctx.rotate(rotRad);
+        ctx.translate(-cx2, -cy2);
         ctx.fillStyle = '#3b82f6';
         ctx.beginPath();
-        ctx.arc(photoOffsetX + photoW / 2, y, 5, 0, Math.PI * 2);
+        ctx.arc(px, py, 5, 0, Math.PI * 2);
         ctx.fill();
-
         ctx.font = '12px -apple-system, sans-serif';
         ctx.fillStyle = '#3b82f6';
-        ctx.fillText('Click second point...', photoOffsetX + 10, y - 10);
+        ctx.fillText('Click second point...', px + 10, py - 10);
+        ctx.restore();
+    }
+
+    // Draw line between both pending between-points while modal is open
+    if (state.pendingMarker && state.pendingMarker.x2 !== undefined) {
+        const x1c = state.pendingMarker.x1 * scale + photoOffsetX;
+        const y1c = state.pendingMarker.y1 * scale + oY;
+        const x2c = state.pendingMarker.x2 * scale + photoOffsetX;
+        const y2c = state.pendingMarker.y2 * scale + oY;
+        const cx2 = width / 2, cy2 = height / 2;
+
+        ctx.save();
+        ctx.translate(cx2, cy2);
+        ctx.rotate(rotRad);
+        ctx.translate(-cx2, -cy2);
+
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(59, 130, 246, 0.9)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 4]);
+        ctx.moveTo(x1c, y1c);
+        ctx.lineTo(x2c, y2c);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = '#3b82f6';
+        for (const [px, py] of [[x1c, y1c], [x2c, y2c]]) {
+            ctx.beginPath();
+            ctx.arc(px, py, 5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
     }
 
     // Draw pending horizon point

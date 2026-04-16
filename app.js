@@ -611,6 +611,7 @@ overlayCanvas.addEventListener('click', e => {
 
     // Between-points: first click
     if (state.mode === 'placing-between-1') {
+        state.pendingMarker.x1 = imgX;
         state.pendingMarker.y1 = imgY;
         state.mode = 'placing-between-2';
         $('btn-add-between').textContent = 'Click 2nd point...';
@@ -620,18 +621,24 @@ overlayCanvas.addEventListener('click', e => {
 
     // Between-points: second click
     if (state.mode === 'placing-between-2') {
+        state.pendingMarker.x2 = imgX;
         state.pendingMarker.y2 = imgY;
 
         // Ensure y1 < y2 (y1 = higher in image = farther)
         if (state.pendingMarker.y1 > state.pendingMarker.y2) {
-            const tmp = state.pendingMarker.y1;
+            let tmp = state.pendingMarker.y1;
             state.pendingMarker.y1 = state.pendingMarker.y2;
             state.pendingMarker.y2 = tmp;
+            tmp = state.pendingMarker.x1;
+            state.pendingMarker.x1 = state.pendingMarker.x2;
+            state.pendingMarker.x2 = tmp;
         }
 
         state.mode = 'idle';
         overlayCanvas.style.cursor = 'default';
         $('btn-add-between').textContent = '+ Between Points';
+
+        render();
 
         // Check if points are at similar Y (horizontal measurement — won't help calibration)
         const yDiff = Math.abs(state.pendingMarker.y2 - state.pendingMarker.y1);
