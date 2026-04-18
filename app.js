@@ -1563,6 +1563,11 @@ $('btn-help').addEventListener('click', () => $('modal-help').classList.remove('
 $('btn-close-help').addEventListener('click', () => $('modal-help').classList.add('hidden'));
 $('modal-help').addEventListener('click', e => { if (e.target === $('modal-help')) $('modal-help').classList.add('hidden'); });
 
+// ── About modal ──
+$('btn-about').addEventListener('click', () => $('modal-about').classList.remove('hidden'));
+$('btn-close-about').addEventListener('click', () => $('modal-about').classList.add('hidden'));
+$('modal-about').addEventListener('click', e => { if (e.target === $('modal-about')) $('modal-about').classList.add('hidden'); });
+
 // ── Export / Import ──
 $('btn-export').addEventListener('click', () => {
     const json = exportProject(state);

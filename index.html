@@ -20,6 +20,7 @@
             <button id="btn-export">Export</button>
             <input type="file" id="file-import" accept=".json,application/json" style="display:none">
             <button id="btn-help">Help</button>
+            <button id="btn-about">About</button>
         </div>
         <button id="btn-header-menu" class="header-menu-toggle">&#x22EE;</button>
     </header>
@@ -255,6 +256,21 @@
             <li>Use <strong>Compare Cameras</strong> to see a side-by-side stats table.</li>
         </ol>
         <p style="font-size:12px;color:var(--text-dim);margin-top:12px">Note: Distance calibration assumes roughly flat ground and a level camera. PPF values for ultra-wide (180°) cameras are averaged across the frame — center regions will have higher PPF than edges.</p>
+    </div>
+</div>
+
+<!-- About Modal -->
+<div class="modal-backdrop hidden" id="modal-about">
+    <div class="modal" style="max-width:420px">
+        <button class="close-btn" id="btn-close-about">&times;</button>
+        <h2>About</h2>
+        <p style="font-size:15px;font-weight:600;margin-bottom:6px">Security Camera FOV Calculator</p>
+        <p style="font-size:13px;color:var(--text-dim);margin-bottom:12px">Visualize camera Field of View before you buy them</p>
+        <table style="font-size:13px;width:100%">
+            <tr><td style="padding:4px 12px 4px 0;color:var(--text-dim);white-space:nowrap">Author</td><td style="padding:4px 0">Ryan Mathewson</td></tr>
+            <tr><td style="padding:4px 12px 4px 0;color:var(--text-dim);white-space:nowrap">License</td><td style="padding:4px 0">GPL-3.0</td></tr>
+            <tr><td style="padding:4px 12px 4px 0;color:var(--text-dim);white-space:nowrap">Source</td><td style="padding:4px 0"><a href="https://github.com/RyanMathewson/FOVCalc" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline">GitHub &nearr;</a></td></tr>
+        </table>
     </div>
 </div>
 
